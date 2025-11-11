@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gemini Chatbot</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <main>
+        <div class="header">
+            <h1>Discovery Assesment</h1>
+            <p>Obrolan interaktif untuk mapping prioritas usecase</p>
+        </div>
+
+        <div class="chat-container">
+            <div id="chatMessages" class="chat-messages"></div>
+            <div id="loading" style="display: none;" class="loading-row">
+                <div class="spinner"></div>
+                <span>Meminta jawaban dari Gemini...</span>
+            </div>
+            <div class="chat-input-row">
+                <input id="chatInput" type="text" placeholder="Tulis pesan dan tekan Enter..." />
+                <button id="sendButton">Kirim</button>
+            </div>
+        </div>
+
+        <section class="mapping-section">
+            <h2>Mapping Position (Impact vs Feasibility)</h2>
+            <div class="chart-container">
+                <canvas id="mappingChart"></canvas>
+            </div>
+            <div class="control-row">
+                <button id="saveButton" disabled>Simpan ke Spreadsheet</button>
+                <button id="clearButton" class="secondary">Clear Chart</button>
+                <button id="reloadButton" class="secondary">Muat Riwayat</button>
+                <span id="saveStatus" class="status"></span>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        const chatMessages = document.getElementById('chatMessages');
+        const chatInput = document.getElementById('chatInput');
+        const sendButton = document.getElementById('sendButton');
+        const loading = document.getElementById('loading');
+        const saveButton = document.getElementById('saveButton');
+        const clearButton = document.getElementById('clearButton');
+        const reloadButton = document.getElementById('reloadButton');
+        const saveStatus = document.getElementById('saveStatus');
+        const mappingCanvas = document.getElementById('mappingChart');
+
+        const conversation = [];
+        const assessments = [];
+        const STORAGE_KEY = 'usecase_assessments_v1';
+        let lastAssessment = null;
+        let mappingChart = null;
+
+        const initChart = () => {
+            if (!mappingCanvas) return;
+            const ctx = mappingCanvas.getContext('2d');
+            mappingChart = new Chart(ctx, {
+                type: 'scatter',
+                data: {
+                    datasets: [{
+                        label: 'Use Cases',
+                        data: [],
+                        pointRadius: 6,
+                        pointHoverRadius: 8,
+                        parsing: false,
+                        pointBackgroundColor: (context) => {
+                            const raw = context.raw || {};
+                            return getColorByPriority(raw.priority);
+                        },
+                        pointBorderColor: (context) => {
+                            const raw = context.raw || {};
+                            return getColorByPriority(raw.priority);
+                        }
+                    }]
+                },
+                options: {
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: { min: 0, max: 100, title: { display: true, text: 'Feasibility (X)' } },
+                        y: { min: 0, max: 100, title: { display: true, text: 'Impact (Y)' } }
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: (ctx) => {
+                                    const d = ctx.raw || {};
+                                    const name = d.label || 'Use case';
+                                    return `${name}: Impact ${d.y}, Feasibility ${d.x}`;
+                                }
+                            }
+                        },
+                        legend: { display: true }
+                    },
+                    elements: { point: { borderWidth: 1 } }
+                }
+            });
+        };
+
+        const getColorByPriority = (priority) => {
+            const p = String(priority || '').toLowerCase();
+            if (p.includes('quick')) return '#2e7d32'; // hijau
+            if (p.includes('second')) return '#f9a825'; // kuning
+            if (p.includes('watch') || p.includes('experiment')) return '#1565c0'; // biru
+            if (p.includes('defer')) return '#9e9e9e'; // abu
+            return '#673ab7'; // fallback ungu
+        };
+
+        const addAssessmentToChart = (a) => {
+            if (!mappingChart) return;
+            mappingChart.data.datasets[0].data.push({
+                x: a.feasibility,
+                y: a.impact,
+                label: a.use_case_name,
+                priority: a.priority
+            });
+            mappingChart.update();
+        };
+
+        const persistAssessments = () => {
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(assessments));
+            } catch (e) {
+                console.warn('Persist gagal:', e);
+            }
+        };
+
+        const loadAssessments = () => {
+            try {
+                const raw = localStorage.getItem(STORAGE_KEY);
+                if (!raw) return;
+                const arr = JSON.parse(raw);
+                if (Array.isArray(arr)) {
+                    // Tambahkan ke memori dan chart
+                    for (const a of arr) {
+                        if (a && typeof a === 'object') {
+                            assessments.push(a);
+                            addAssessmentToChart(a);
+                        }
+                    }
+                    // Aktifkan tombol simpan jika ada titik terakhir
+                    lastAssessment = assessments[assessments.length - 1] || null;
+                    saveButton.disabled = !lastAssessment;
+                }
+            } catch (e) {
+                console.warn('Load riwayat gagal:', e);
+            }
+        };
+
+        const parseNumber = (s) => {
+            if (s == null) return null;
+            const clean = String(s).replace(',', '.');
+            const n = parseFloat(clean);
+            return Number.isFinite(n) ? n : null;
+        };
+
+        const parseAssessmentFromText = (text) => {
+            const t = String(text || '');
+            const find = (re) => {
+                const m = t.match(re);
+                return m ? m[1].trim() : null;
+            };
+
+            const useCase = find(/Use\s*case:\s*(.+)/i);
+            const domain = find(/Domain:\s*(.+)/i);
+            const impactStr = find(/Impact[^:]*:\s*([0-9]+(?:[\.,][0-9]+)?)/i);
+            const feasStr = find(/Feasibility[^:]*:\s*([0-9]+(?:[\.,][0-9]+)?)/i);
+            const totalStr = find(/Total[^:]*:\s*([0-9]+(?:[\.,][0-9]+)?)/i);
+            const priority = find(/Priority\s*class:\s*([^\n]+)/i);
+
+            const impact = parseNumber(impactStr);
+            const feasibility = parseNumber(feasStr);
+            const total = parseNumber(totalStr);
+
+            if (useCase && domain && impact != null && feasibility != null && total != null && priority) {
+                return {
+                    use_case_name: useCase,
+                    domain,
+                    impact,
+                    feasibility,
+                    total,
+                    priority,
+                    timestamp: new Date().toISOString()
+                };
+            }
+            return null;
+        };
+
+        const addMessage = (role, text) => {
+            const row = document.createElement('div');
+            row.className = `msg msg-${role}`;
+            const bubble = document.createElement('div');
+            bubble.className = 'bubble';
+            bubble.textContent = text;
+            row.appendChild(bubble);
+            chatMessages.appendChild(row);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        };
+
+        const send = async () => {
+            const text = chatInput.value.trim();
+            if (!text) return;
+            chatInput.value = '';
+            addMessage('user', text);
+            conversation.push({ role: 'user', text });
+
+            loading.style.display = 'flex';
+            sendButton.disabled = true;
+
+            try {
+                const response = await fetch('/.netlify/functions/score', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ messages: conversation })
+                });
+
+                if (!response.ok) {
+                    const dataText = await response.text();
+                    let msg;
+                    let statusCode = response.status;
+                    try {
+                        const errorData = JSON.parse(dataText);
+                        const base = errorData.error || errorData.message || errorData.details || dataText;
+                        const extras = [];
+                        if (errorData.status) statusCode = Number(errorData.status) || statusCode;
+                        if (Array.isArray(errorData.availableModels)) {
+                            const modelsPreview = errorData.availableModels.slice(0, 10).join(', ');
+                            extras.push(`models: ${modelsPreview}`);
+                        }
+                        if ([503, 504, 429].includes(Number(statusCode))) {
+                            extras.push('Saran: tunggu sebentar lalu coba lagi; ringkas narasi; gunakan model cepat.');
+                        }
+                        msg = [base, ...extras].join('\n');
+                    } catch {
+                        msg = dataText || `HTTP error! status: ${statusCode}`;
+                    }
+                    throw new Error(msg);
+                }
+
+                const data = await response.json();
+                const reply = data.message || '(kosong)';
+                conversation.push({ role: 'assistant', text: reply });
+                addMessage('assistant', reply);
+
+                // Coba parsing hasil /score menjadi objek terstruktur untuk grafik & simpan
+                const parsed = parseAssessmentFromText(reply);
+                if (parsed) {
+                    lastAssessment = parsed;
+                    assessments.push(parsed);
+                    addAssessmentToChart(parsed);
+                    persistAssessments();
+                    saveButton.disabled = false;
+                    saveStatus.textContent = 'Siap disimpan ke Google Sheets.';
+                } else {
+                    saveButton.disabled = true;
+                    saveStatus.textContent = '';
+                }
+
+            } catch (error) {
+                console.error('Error fetching score:', error);
+                addMessage('assistant', `${error.message}`);
+            } finally {
+                loading.style.display = 'none';
+                sendButton.disabled = false;
+            }
+        };
+
+        sendButton.addEventListener('click', send);
+        chatInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                send();
+            }
+        });
+
+        saveButton.addEventListener('click', async () => {
+            if (!lastAssessment) return;
+            saveButton.disabled = true;
+            saveStatus.textContent = 'Menyimpan…';
+            try {
+                const resp = await fetch('/.netlify/functions/save', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ assessment: lastAssessment })
+                });
+                const json = await resp.json().catch(() => ({}));
+                if (!resp.ok) {
+                    const msg = json.error || json.message || 'Gagal menyimpan.';
+                    throw new Error(msg);
+                }
+                saveStatus.textContent = 'Tersimpan ✔';
+            } catch (err) {
+                console.error('Save error:', err);
+                saveStatus.textContent = `Gagal: ${err.message}`;
+            } finally {
+                saveButton.disabled = false;
+            }
+        });
+
+        clearButton.addEventListener('click', () => {
+            lastAssessment = null;
+            if (mappingChart) {
+                mappingChart.data.datasets[0].data = [];
+                mappingChart.update();
+            }
+            saveButton.disabled = true;
+            saveStatus.textContent = '';
+        });
+
+        reloadButton.addEventListener('click', () => {
+            if (mappingChart) {
+                mappingChart.data.datasets[0].data = [];
+                mappingChart.update();
+            }
+            loadAssessments();
+        });
+
+        // Inisialisasi grafik saat halaman siap
+        initChart();
+        loadAssessments();
+    </script>
+</body>
+</html>
+
+<!-- <script>
+        const scoreButton = document.getElementById('scoreButton');
+        const narrativeInput = document.getElementById('narrativeInput');
+        const resultOutput = document.getElementById('resultOutput');
+        const loading = document.getElementById('loading');
+
+        scoreButton.addEventListener('click', async () => {
+            const narrative = narrativeInput.value;
+            if (!narrative) {
+                alert('Mohon masukkan narasi use case.');
+                return;
+            }
+
+            // Tampilkan loading & bersihkan hasil lama
+            loading.style.display = 'flex';
+            resultOutput.textContent = '';
+            scoreButton.disabled = true;
+
+            try {
+                // --- [PERUBAHAN 1] ---
+                // Kita "simulasikan" perintah chatbot
+                // Kita instruksikan AI untuk menerima narasi DAN langsung /score
+                const userMessage = `/narrative\n${narrative}\n\n/score`;
+
+                // --- [PERUBAHAN 2] ---
+                // Sesuaikan payload agar cocok dengan backend chatbot (score.js)
+                const bodyPayload = {
+                    history: [], // UI ini selalu memulai sesi baru
+                    message: userMessage
+                };
+                
+                // Panggil backend serverless kita
+                const response = await fetch('/.netlify/functions/score', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    // Gunakan payload baru
+                    body: JSON.stringify(bodyPayload) 
+                });
+
+                // --- [TANPA PERUBAHAN] ---
+                // Blok error handling Anda sudah sangat bagus dan
+                // kompatibel dengan backend (errorData.details, .status, .availableModels)
+                if (!response.ok) {
+                    const text = await response.text();
+                    let msg;
+                    try {
+                        const errorData = JSON.parse(text);
+                        const base = errorData.details || errorData.error || errorData.message || text;
+                        const extras = [];
+                        if (errorData.status) extras.push(`status: ${errorData.status}`);
+                        if (Array.isArray(errorData.availableModels)) {
+                            const modelsPreview = errorData.availableModels.slice(0, 10).join(', ');
+                            extras.push(`availableModels: ${modelsPreview}`);
+                        }
+                        msg = [base, ...extras].join('\n');
+                    } catch {
+                        msg = text;
+                    }
+                    throw new Error(msg || `HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                
+                // --- [PERUBAHAN 3] ---
+                // Backend chatbot (score.js) mengirim 'messageText' dan 'model'
+                // Kita tampilkan keduanya
+                const modelInfo = data.model ? `(Model: ${data.model})\n\n` : "";
+                resultOutput.textContent = `${modelInfo}${data.messageText}`;
+
+            } catch (error) {
+                console.error('Error fetching score:', error);
+                resultOutput.textContent = `Error: Gagal mendapatkan skor.\n${error.message}`;
+            } finally {
+                // Sembunyikan loading & aktifkan tombol lagi
+                loading.style.display = 'none';
+                scoreButton.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html> -->

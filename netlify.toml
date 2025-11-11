@@ -1,0 +1,10 @@
+[build]
+  # Folder tempat frontend (index.html) berada
+  publish = "public"
+  # Folder tempat backend (score.js) berada
+  functions = "netlify/functions"
+
+[functions]
+  # Ini penting untuk memberitahu Netlify cara mem-bundle
+  # file backend kita yang menggunakan 'import'
+  node_bundler = "esbuild"
