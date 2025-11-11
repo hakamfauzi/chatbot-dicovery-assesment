@@ -27,7 +27,7 @@
         </div>
 
         <section class="mapping-section">
-            <h2>Mapping Position (Impact vs Feasibility)</h2>
+            <h2>Mapping Position (Business Impact vs Technical Feasibility)</h2>
             <div class="chart-container">
                 <canvas id="mappingChart"></canvas>
             </div>
@@ -82,8 +82,8 @@
                 options: {
                     maintainAspectRatio: false,
                     scales: {
-                        x: { min: 0, max: 100, title: { display: true, text: 'Feasibility (X)' } },
-                        y: { min: 0, max: 100, title: { display: true, text: 'Impact (Y)' } }
+                        x: { min: 0, max: 100, title: { display: true, text: 'Technical Feasibility (X)' } },
+                        y: { min: 0, max: 100, title: { display: true, text: 'Business Impact (Y)' } }
                     },
                     plugins: {
                         tooltip: {

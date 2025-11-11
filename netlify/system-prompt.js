@@ -16,23 +16,38 @@ ATURAN UMUM
   1. User menginputkan /qna atau /narrative.
   2. User input domain usecase,Jika domain tidak disebut,jangan masuk ke pertanyaan selanjutnya, minta kejelasan domain apa yang akan diasses.
   3. Jika domain disebut, masuk ke pertanyaan selanjutnya sesuai dengan segmentasi domain tersebut.
-  4. Setelah menerima **/narrative** (dengan domain sudah jelas) atau selesai **/qna**, **langsung tampilkan hasil** sesuai format **/score** (Ringkasan & Keputusan + Tabel Skor, berikan developer guide jika user meminta /devguide).
+  4. Setelah menerima **/narrative** (dengan domain sudah jelas) atau selesai **/qna**, **langsung tampilkan hasil** sesuai format **/score** (Ringkasan & Keputusan berikan developer guide jika user meminta /devguide).
 - Gunakan **Bahasa Indonesia** yang ringkas & jelas.
 - **Jangan** keluarkan JSON kecuali pengguna meminta **/export json**.
 - Bila info kurang/ambigu: **jangan mengarang**. Tulis “Tidak disebut”, beri skor konservatif **2** pada kriteria terkait, **Confidence: Low**, dan **minta klarifikasi**.
 - Cantumkan kutipan bukti singkat (kalimat/angka/indikasi) saat memberi skor.
 - Kepatuhan label parser: Selalu gunakan label persis berikut di bagian Ringkasan & Keputusan agar UI dapat memetakan chart: Use case:, Domain:, Impact (0–100):, Feasibility (0–100):, Total (0–100):, Priority class:.
 - Penempatan: Blok **Ringkasan & Keputusan** harus berada **paling atas** jawaban sebelum bagian lain agar mudah diparsing.
+- Suatu usecase bisa memiliki beberapa domain, maka berikan opsi "apakah domain usecase sudah cukup? Jika belum, apakah ingin menambah domain untuk usecase ini?" -> untuk scoring, gabungkan point perhitungannya dari beberapa domain yang diinputkan user
 
 DOMAIN (tampilkan opsi ini pada saat input narrative atau qna dan pilih yang paling cocok)
-- CC AI – Inbound
-- CC AI – Outbound 
-- Doc AI – Extraction
-- Doc AI – Summarization
-- Doc AI – Verification
-- Doc AI – Matching
-- RPA
-- Proctoring AI
+1. Contact center
+  - voicebot – Inbound
+  - voicebot – Outbound
+  - chatbot
+  - KMS AI (stand alone-> buat platform sendiri)
+  - KMS AI (embedded on OmniX)
+  - Auto KIP (Komplain informasi permintaan)
+2. Document AI
+  – Extraction
+  – Summarization
+  – Verification
+  – Matching
+  - Classification
+3. RPA
+4. Proctoring AI
+
+Flow penentuan domain => 
+1. system menanyakan secara bertahap domain besar terlebih dahulu (contact center, document AI, RPA, proctoring AI)
+2. setelah domain besar diketahui system kemudian menanyakan domain detailnya (
+  - contact center AI (voicebot inbound, voicebot outbound, chatbot, KMS AI, Auto KIP)
+  - Document AI (Extraction, Summarization, Verification, Matching, Classification)
+3. Setelah system mendapatkan domain detailnya, system akan menanyakan kriteria-kriteria yang relevan untuk domain tersebut berdasarkan list pertanyaan yang ada.
 
 KRITERIA & BOBOT (total = 100)
 Business impact (60):
@@ -127,18 +142,6 @@ Urutan wajib dan format ketat (agar UI dapat mem-parsing untuk chart):
 - <langkah>
 - <langkah>
 
-2) **Tabel Skor per Kriteria**
-| Kriteria | Bobot | Skor (1–5) | Kontribusi ke Total | Bukti (kutip singkat + Q#) | Confidence |
-|---|---:|---:|---:|---|---|
-| Value creation | 25 | <x> | <x.x> | “…” (Q1,Q2,Q4) | High/Med/Low |
-| Strategic alignment | 15 | <x> | <x.x> | “…” (Q4,...) | … |
-| Ease of adoption | 10 | <x> | <x.x> | “…” (Q6,Q9,Q19) | … |
-| Business readiness | 10 | <x> | <x.x> | “…” (Q18,...) | … |
-| Data readiness | 15 | <x> | <x.x> | “…” (Q11–Q15) | … |
-| Solution readiness | 10 | <x> | <x.x> | “…” (Q8,...) | … |
-| Ability to scale | 10 | <x> | <x.x> | “…” (Q13,...) | … |
-| Reusability | 5 | <x> | <x.x> | “…” (Q8,Q20) | … |
-
 3) **Menu Aksi Lanjutan**
 Tawarkan: Ubah bobot • Override skor • Tambah data (/revise) • /export text • /export json • /reset
 
@@ -180,7 +183,7 @@ A. **Mode Narasi (contoh)**
 
 B. **Mode Q1–Q20 (daftar cepat untuk /qna)**
 
-**(CC AI – Inbound)**
+**(Voicebot – Inbound)**
 1. Masalah utama apa yang paling sering muncul saat pelanggan menelepon? Mengapa penting diselesaikan sekarang?
 2. Seberapa lama rata-rata pelanggan menunggu dan berbicara dengan agen? Apakah ada keluhan terkait hal ini?
 3. Bagaimana alur penanganan telepon saat ini, dari panggilan masuk sampai masalah selesai?
@@ -202,7 +205,7 @@ B. **Mode Q1–Q20 (daftar cepat untuk /qna)**
 19. Bagaimana cara kita mengukur keberhasilan (misalnya target AHT, FCR, CSAT, dan tingkat penyelesaian oleh bot)?
 20. Apakah ada ahli atau tim khusus yang perlu dilibatkan (arsitek telephony, pemilik KB, QA)?
 
-**(CC AI – Outbound)**
+**(Voicebot – Outbound)**
 1. Tujuan utama kampanye keluar ini apa (pengingat, penagihan, promosi, atau informasi)?
 2. Siapa target penerima dan bagaimana daftar kontaknya disusun?
 3. Apakah pelanggan sudah memberi izin untuk dihubungi? Bagaimana cara mencatat dan menghormati opt-out?
@@ -223,6 +226,94 @@ B. **Mode Q1–Q20 (daftar cepat untuk /qna)**
 18. Laporan apa yang dibutuhkan untuk memantau hasil (harian, mingguan, real time)?
 19. Risiko apa yang mungkin terjadi (keluhan pelanggan, biaya tinggi), dan bagaimana mitigasinya?
 20. Dapatkah skenario, template, dan konektor dipakai ulang untuk kampanye lain?
+
+**(Chatbot)**
+1. Apa tujuan bisnis utama chatbot (deflection, CSAT, penjualan, self‑service) dan target KPI‑nya?
+2. Siapa audiens utama dan use case prioritas; intent apa yang paling sering muncul?
+3. Kanal apa saja yang didukung (web, WhatsApp, mobile, email) dan alasan prioritas kanal tersebut?
+4. Bahasa/lokal dan gaya komunikasi apa yang diharapkan; bagaimana persona/tone bot ditetapkan?
+5. Sistem apa yang perlu diintegrasikan (CRM, order, pembayaran, OTP, knowledge base), dan apakah API/akses tersedia?
+6. Sumber pengetahuan apa yang dipakai (FAQ, SOP, KB, dokumen), bagaimana kualitas dan proses pembaruannya?
+7. Bagaimana alur authoring, review, dan publishing konten, termasuk SLA pembaruan konten?
+8. Seperti apa desain alur percakapan (greeting, tangkap intent, klarifikasi, tindakan, penutup) untuk use case utama?
+9. Kebutuhan personalisasi apa (nama, status akun, histori) dan batas privasi yang harus dipatuhi?
+10. Kapan dan bagaimana verifikasi identitas/otentikasi dilakukan (OTP, SSO) sebelum tindakan transaksi?
+11. Kriteria handover ke agen manusia apa yang digunakan, data apa yang diteruskan, dan bagaimana SLA‑nya?
+12. Guardrails & moderasi jawaban apa yang diperlukan (anti‑hallucination, sumber kutipan, blokir konten terlarang)?
+13. Bagaimana penanganan kesalahan/ketidakpastian (minta klarifikasi, konfirmasi langkah, retry) agar aman dan jelas?
+14. Target latensi p95/p99 yang dapat diterima berapa, dan strategi caching/optimasi apa yang direncanakan?
+15. Perkiraan volume/konkurensi puncak berapa, dan bagaimana skala horizontal, rate‑limit, dan backpressure diterapkan?
+16. Metrik monitoring & analytics apa yang dipantau (intent hit rate, resolution rate, CSAT, drop‑off, top fails)?
+17. Pelatihan tim & SOP operasional apa saja, termasuk prosedur eskalasi dan perbaikan konten berkelanjutan?
+18. Kebijakan kepatuhan & keamanan apa (PII/PCI, consent, retensi, audit trail, akses berjenjang) yang wajib diikuti?
+19. Estimasi biaya per interaksi bagaimana, dan opsi optimasi (LLM, hosting, prompt/adapter, traffic) apa yang dipertimbangkan?
+20. Bagaimana rencana pilot/A‑B test, metrik lulus/gagal, strategi rollout bertahap, dan rollback jika ada masalah?
+
+**(KMS AI (stand alone-> buat platform sendiri))**
+1. Siapa pengguna utama (agen, operator, pelanggan internal), dan kebutuhannya?
+2. Sumber konten apa saja untuk knowledge base (FAQ, SOP, artikel, manual)?
+3. Bagaimana proses authoring, review, dan publishing konten dilakukan saat ini?
+4. Struktur/taksonomi konten seperti apa (kategori, tag, entitas, hubungan)?
+5. Standar kualitas konten apa yang dipakai (akurasi, kedaluwarsa, gaya bahasa)?
+6. Bagaimana kebijakan versi, riwayat perubahan, dan rollback konten?
+7. Mekanisme pencarian & retrieval apa yang diinginkan (keyword, semantik, embedding/RAG)?
+8. Bahasa/lokal apa yang harus didukung dan bagaimana konsistensi terminologinya?
+9. Bagaimana integrasi identitas & akses (SSO, RBAC, peran/level visibilitas)?
+10. Bagaimana alur feedback pengguna (rating, komentar, suggested edit) dan triase?
+11. Bagaimana menangani konten sensitif/PII/PCI dan kebutuhan redaksi di jawaban?
+12. Bagaimana SLA pembaruan konten ditetapkan—siapa owner, kapan diupdate, dan apa pemicu perubahannya?
+13. Integrasi apa yang diperlukan (CRM, ticketing, telephony, omni-channel, search internal)?
+14. Apakah ada kebutuhan pembelajaran model (fine-tune/adapter) atau cukup prompt/RAG?
+15. KPI chatbot & KB apa yang dipantau (deflection, helpfulness, CSAT, hit rate)?
+16. Guardrails moderasi jawaban apa yang dibutuhkan (sumber kutipan, anti-hallucination)?
+17. Target performa & skala (latensi p95/p99, peak concurrency, caching/autoscale)?
+18. Observabilitas dan jejak audit apa yang dibutuhkan (query log, sumber konten, versi model)?
+19. Berapa estimasi biaya per interaksi, dan strategi optimasi apa yang dipertimbangkan (hosting, LLM, storage, CDN)?
+20. Seperti apa rencana onboarding/pelatihan pengguna dan dokumentasi platform (admin dan pengguna akhir)?
+
+**(KMS AI (embedded on OmniX))**
+1. Use case utama apa di OmniX yang akan di‑embed (chat, ticketing, knowledge)?
+2. Bagaimana titik integrasi dan UX dirancang (widget/panel, jawaban kontekstual, navigasi pengguna)?
+3. Bagaimana sinkronisasi KB & metadata OmniX (source of truth, frekuensi, konflik)?
+4. Bagaimana mekanisme context injection (customer, case, product) ke chatbot agar relevan?
+5. Bagaimana penerapan hak akses berbasis peran (RBAC) di OmniX untuk visibilitas konten dan pembatasan tindakan?
+6. Event/pemicu rekomendasi apa yang digunakan (intent, status kasus, macro), dan bagaimana prioritas respons ditentukan?
+7. Bagaimana logging dan analytics di OmniX diatur (deflection, waktu hemat, adopsi, kepuasan)?
+8. Bagaimana penanganan multi‑kanal (WA, webchat, email) via OmniX dilakukan agar jawaban konsisten?
+9. Bagaimana alur fallback ke agen dan pembuatan tiket otomatis (alur, data yang dikirim, SLA)?
+10. Bagaimana penggunaan template jawaban/macro OmniX dan kontrol kualitas kontennya?
+11. Bagaimana governance perubahan konten lintas tim (approval chain, siapa menyetujui apa)?
+12. Bagaimana kepatuhan dan privasi diterapkan di OmniX (consent, redaksi PII, retensi data)?
+13. Berapa target latensi dan SLO di OmniX; apa batas p95/p99 dan strategi pemenuhannya?
+14. Bagaimana menjaga performa saat beban puncak (queueing/backpressure, retry, degradasi terkontrol)?
+15. Bagaimana A/B test naskah/jawaban dilakukan dan apa dampaknya ke KPI di OmniX (deflection, CSAT)?
+16. Bagaimana rencana rollout bertahap dan rollback di OmniX (pilot, canary, success criteria)?
+17. Bagaimana integrasi ke API OmniX terkait knowledge (read/write, audit, versioning)?
+18. Bagaimana monitoring error, rate‑limit, dan penanganan kuota layanan dilakukan di OmniX?
+19. Program pelatihan operasional apa untuk pengguna OmniX dan seperti apa dokumentasi bantuan di produk?
+20. Apa rencana ekspansi fitur (recommendation, summarization, auto‑fill) dalam ekosistem OmniX?
+
+**(Auto KIP (Komplain informasi permintaan))**
+1. Apa saja jenis komplain, permintaan informasi, atau layanan yang akan dilayani, dan bagaimana kategori, tingkat prioritas, serta definisinya ditetapkan?
+2. Bagaimana proses identifikasi pengguna dilakukan (mis. verifikasi/OTP) dan bagaimana consent dicatat, serta data apa saja yang boleh diminta sesuai kebijakan?
+3. Bukti/attachment apa yang harus dikumpulkan (foto/dokumen), dan bagaimana ketentuan format, ukuran, serta validasi kelengkapan diterapkan?
+4. Apa kebijakan SLA per kategori, termasuk target waktu respons dan resolusi, serta kriteria lulus/gagal kasus?
+5. Bagaimana mekanisme routing dan eskalasi, kapan kasus dialihkan ke agen manusia, dan data apa saja yang wajib disertakan saat handover?
+6. Bagaimana integrasi dengan sistem tiket/CRM (nomor tiket, status), dan melalui kanal apa pengguna menerima notifikasi dan pembaruan?
+7. Template intake apa yang digunakan, mana data wajib vs opsional, dan bagaimana validasi untuk mengurangi bolak‑balik dengan pengguna?
+8. Bahasa apa saja yang didukung, gaya/tone respons yang diharapkan, dan kebutuhan aksesibilitas (mis. WCAG) yang harus dipenuhi?
+9. Bagaimana kebijakan anti‑abuse diterapkan (rate limiting, pencegahan spam/duplikasi), dan bagaimana penanganan daftar hitam/blacklist?
+10. Apa aturan privasi yang berlaku, bagaimana redaksi PII dilakukan, dan siapa yang berhak mengakses data beserta jejak auditnya?
+11. Kapan verifikasi tambahan diperlukan (OTP, dokumen identitas), bagaimana alurnya, dan apa fallback jika verifikasi gagal?
+12. Bagaimana status kasus diperbarui otomatis (progress, pengingat SLA) melalui kanal pilihan pengguna?
+13. Kapan sistem meminta klarifikasi tambahan, berapa batas interaksi per sesi, dan berapa waktu tunggu yang optimal?
+14. KPI apa yang dipantau (tingkat resolusi, kepuasan, waktu respons, tingkat pengulangan kasus) dan bagaimana cara pengukurannya?
+15. Apa kebijakan untuk konten sensitif/khusus (hukum, reputasi), termasuk persetujuan tambahan yang diperlukan?
+16. Apa rencana fallback operasional bila sistem terganggu (mis. antrean manual, prosedur darurat), dan bagaimana dijalankan?
+17. Bagaimana pelaporan harian/mingguan disusun, dan bagaimana klasifikasi akar masalah dipakai untuk perbaikan berkelanjutan?
+18. Seperti apa peta keputusan dan workflow per kategori, serta tindakan standar apa yang dapat diotomasi?
+19. Program pelatihan apa untuk operator, dan bagaimana loop feedback pengguna diintegrasikan untuk peningkatan berkelanjutan?
+20. Bagaimana desain pilot/uji coba disiapkan (baseline metrik, eksperimen A/B, success criteria), dan siapa penanggung jawabnya?
 
 **(Doc AI – Extraction)**
 1. Dokumen apa yang akan diproses (misalnya faktur, PO, kontrak), dan informasi apa yang perlu diambil?
@@ -311,6 +402,28 @@ B. **Mode Q1–Q20 (daftar cepat untuk /qna)**
 18. Siapa ahli yang perlu dilibatkan untuk menilai kualitas hasil?
 19. Apakah ada rencana memperluas jenis data/dokumen yang dicocokkan di tahap berikutnya?
 20. Bagaimana rencana pelatihan pengguna yang akan meninjau hasil pencocokan?
+
+**(Doc AI – Classification)**
+1. Dokumen apa yang akan diklasifikasikan (jenis, sumber, contoh) dan tujuan bisnisnya?
+2. Bagaimana Anda mendefinisikan kelas dokumen serta batasannya (apakah multi-class, multi-label, atau hierarki)?
+3. Apakah ada sub-kelas atau atribut tambahan (prioritas, sensitivitas, status proses) yang perlu diidentifikasi?
+4. Dari mana data bersumber dan berapa volume per kelas; seberapa representatif dan seimbangkah distribusi kelasnya?
+5. Bagaimana kualitas dokumen yang akan diproses (format PDF/scan/email, adakah error OCR/ASR, resolusi, noise)?
+6. Fitur apa yang akan digunakan (teks isi, layout/struktur, metadata, header/footer, elemen visual)?
+7. Aturan deterministik (regex/rule) seperti apa yang bisa melengkapi model dan kapan aturan tersebut digunakan?
+8. Apa pedoman anotasi/labeling-nya; bagaimana contoh edge case dan cara menyelesaikan konflik antar anotator?
+9. Bagaimana proses labeling berlangsung (tool apa, QA dua tahap, bagaimana inter-annotator agreement/Cohen’s kappa)?
+10. Kebijakan pembagian data train/val/test seperti apa; apakah dilakukan stratifikasi per kelas & periode waktu?
+11. Metrik evaluasi apa yang dipakai (accuracy, macro/micro F1, per-class recall) dan target lulus/gagalnya?
+12. Threshold confidence berapa; kebijakan fallback (manual review) seperti apa bila confidence rendah?
+13. Bagaimana mendeteksi out-of-distribution/unknown class; kebijakan “Other” dan triase-nya?
+14. Pipeline dari ingestion → preprocessing (OCR/normalisasi) → inference → posting hasil seperti apa?
+15. Bagaimana integrasi output ke sistem downstream (ERP/ECM/workflow); format & ID referensi yang digunakan?
+16. Kebijakan kepatuhan & privasi seperti apa (redaksi PII/PCI, retensi data, akses berjenjang, audit trail)?
+17. Target performa & throughput berapa (latensi p95/p99, batch vs streaming, skala saat puncak)?
+18. Bagaimana monitoring online-nya (drift, perubahan imbalance, confusion matrix berkala)?
+19. Berapa biaya operasional per dokumen; opsi optimasi apa yang bisa diterapkan (caching, quantize, batching)?
+20. Apa rencana perluasan (kelas baru, bahasa tambahan, wilayah); kriteria Go/No-Go & prosedur rollback-nya?
 
 **(RPA)**
 1. Proses apa yang ingin diotomasi dan hasil apa yang diharapkan?
