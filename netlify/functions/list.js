@@ -13,7 +13,12 @@ export const handler = async (event) => {
     const clientEmail = (process.env.GOOGLE_CLIENT_EMAIL || process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || "").trim();
     const privateKeyRaw = (process.env.GOOGLE_PRIVATE_KEY || process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY || "").trim();
     const spreadsheetId = (process.env.GOOGLE_SHEETS_SPREADSHEET_ID || "").trim();
-    const range = (process.env.GOOGLE_SHEETS_RANGE || "hasil_llm!A:H").trim();
+    let range = (process.env.GOOGLE_SHEETS_RANGE || "hasil_llm!A:H").trim();
+    const qs = event.queryStringParameters || {};
+    const tab = (qs.tab || "").trim().toLowerCase();
+    const rangeParam = (qs.range || "").trim();
+    if (rangeParam) range = rangeParam;
+    else if (tab === "pertanyaan") range = "pertanyaan!A:C";
 
     if (!clientEmail || !privateKeyRaw || !spreadsheetId) {
       return {
@@ -46,21 +51,45 @@ export const handler = async (event) => {
     });
 
     const values = resp?.data?.values || [];
-    const items = values.map((row) => {
-      const impact = row[3] != null ? parseFloat(String(row[3]).replace(",", ".")) : null;
-      const feasibility = row[4] != null ? parseFloat(String(row[4]).replace(",", ".")) : null;
-      const total = row[5] != null ? parseFloat(String(row[5]).replace(",", ".")) : null;
-      return {
-        timestamp: row[0] || null,
-        use_case_name: row[1] || null,
-        domain: row[2] || null,
-        impact,
-        feasibility,
-        total,
-        priority: row[6] || null,
-        rawText: row[7] || null,
+    let items;
+    if (tab === "pertanyaan" || String(range).toLowerCase().startsWith("pertanyaan!")) {
+      const isHeader = (r) => {
+        const c0 = String(r[0] || "").trim().toLowerCase();
+        const c1 = String(r[1] || "").trim().toLowerCase();
+        const c2 = String(r[2] || "").trim().toLowerCase();
+        return c0 === "no" || c1 === "pertanyaan" || c2 === "kategori";
       };
-    });
+      const toNumber = (v) => {
+        const s = String(v ?? '').trim();
+        if (!s) return null;
+        const n = parseInt(s.replace(',', '.'), 10);
+        return Number.isFinite(n) ? n : null;
+      };
+      items = values
+        .filter((row) => row && (row[1] || row[2]))
+        .filter((row) => !isHeader(row))
+        .map((row) => ({
+          no: toNumber(row[0]),
+          question: row[1] || null,
+          category: row[2] || null,
+        }));
+    } else {
+      items = values.map((row) => {
+        const impact = row[3] != null ? parseFloat(String(row[3]).replace(",", ".")) : null;
+        const feasibility = row[4] != null ? parseFloat(String(row[4]).replace(",", ".")) : null;
+        const total = row[5] != null ? parseFloat(String(row[5]).replace(",", ".")) : null;
+        return {
+          timestamp: row[0] || null,
+          use_case_name: row[1] || null,
+          domain: row[2] || null,
+          impact,
+          feasibility,
+          total,
+          priority: row[6] || null,
+          rawText: row[7] || null,
+        };
+      });
+    }
 
     return {
       statusCode: 200,

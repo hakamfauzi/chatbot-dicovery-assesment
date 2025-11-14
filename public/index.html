@@ -71,8 +71,13 @@
 
         const conversation = [];
         const sheetItems = [];
+        const questionsList = [];
+        let questionsLoaded = false;
         let lastAssessment = null;
         let mappingChart = null;
+        let qnaActive = false;
+        let qnaStep = 1;
+        let qnaCategory = '';
 
         
         // Helper: fetch dengan timeout menggunakan AbortController
@@ -156,6 +161,72 @@
             return 'badge-priority-other';
         };
 
+        const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+        const canonCat = (s) => {
+            const x = norm(s);
+            if (!x) return '';
+            if ((x.includes('ccai') || x.includes('contact center') || x.includes('voicebot')) && x.includes('inbound')) return 'ccai-inbound';
+            if ((x.includes('ccai') || x.includes('contact center') || x.includes('voicebot')) && x.includes('outbound')) return 'ccai-outbound';
+            if (x.includes('chatbot')) return 'chatbot';
+            if (x.includes('kms') && (x.includes('standalone') || x.includes('stand alone'))) return 'kms ai (stand alone)';
+            if (x.includes('kms') && (x.includes('embedded') || x.includes('omnix') || x.includes('omni'))) return 'kms ai (embedded on omnix)';
+            if (x.includes('kip') || x.includes('komplain')) return 'auto kip';
+            if (x.includes('proctoring')) return 'proctoring ai';
+            if (x.includes('document') && (x.includes('extraction') || x.includes('extract') || x.includes('ocr'))) return 'extraction';
+            if (x.includes('document') && (x.includes('summarization') || x.includes('summary') || x.includes('ringkas'))) return 'summarization';
+            if (x.includes('document') && (x.includes('verification') || x.includes('verifikasi'))) return 'verification';
+            if (x.includes('document') && (x.includes('matching') || x.includes('match'))) return 'matching';
+            if (x.includes('document') && (x.includes('classification') || x.includes('klasifikasi'))) return 'classification';
+            if (x.includes('rpa') || x.includes('robotic process')) return 'rpa';
+            return x;
+        };
+
+        const detectCategoriesFromText = (text) => {
+            const s = norm(text);
+            const has = (kw) => s.includes(norm(kw));
+            const cats = [];
+            if (has('contact center')) {
+                if (has('voicebot') && has('inbound')) cats.push('ccai-inbound');
+                if (has('voicebot') && has('outbound')) cats.push('ccai-outbound');
+                if (has('chatbot')) cats.push('chatbot');
+                if ((has('kms') || has('kms ai')) && (has('stand alone') || has('standalone'))) cats.push('kms ai (stand alone)');
+                if ((has('kms') || has('kms ai')) && (has('embedded') || has('omni') || has('omnix'))) cats.push('kms ai (embedded on omnix)');
+                if (has('auto kip') || has('kip') || has('komplain')) cats.push('auto kip');
+            }
+            if (has('document ai') || has('documentai') || has('doc ai') || has('document')) {
+                if (has('extraction') || has('extract') || has('ekstrak') || has('ocr')) cats.push('extraction');
+                if (has('summarization') || has('summary') || has('ringkas')) cats.push('summarization');
+                if (has('verification') || has('verifikasi')) cats.push('verification');
+                if (has('matching') || has('match')) cats.push('matching');
+                if (has('classification') || has('klasifikasi')) cats.push('classification');
+            }
+            if (has('rpa') || has('robotic process')) cats.push('rpa');
+            if (has('proctoring') || has('proctoring ai')) cats.push('proctoring ai');
+            return Array.from(new Set(cats.map(canonCat).filter(Boolean)));
+        };
+
+        const detectCategoriesFromConversation = (conv) => {
+            const out = [];
+            for (let i = conv.length - 1; i >= 0; i--) {
+                const m = conv[i];
+                const found = detectCategoriesFromText(String(m?.text || ''));
+                for (const k of found) out.push(k);
+                if (out.length) break;
+            }
+            return Array.from(new Set(out));
+        };
+
+        const getAvailableCategories = () => {
+            const set = new Map();
+            for (const q of questionsList) {
+                const orig = String(q.category || '').trim();
+                const canon = canonCat(orig);
+                if (!canon) continue;
+                if (!set.has(canon)) set.set(canon, orig);
+            }
+            return Array.from(set.values());
+        };
+
         const addAssessmentToChart = (a) => {
             if (!mappingChart) return;
             const x = Number.isFinite(a?.feasibility) ? a.feasibility : 0;
@@ -234,10 +305,35 @@
             sendButton.disabled = true;
 
             try {
+                let flow = /\b\/qna\b/i.test(text) ? 'qna' : (/\b\/devguide\b/i.test(text) ? 'devguide' : '');
+                if (/\b\/qna\b/i.test(text)) {
+                    qnaActive = true;
+                    qnaStep = 1;
+                    const catsStart = detectCategoriesFromText(text);
+                    const catsConv = detectCategoriesFromConversation(conversation);
+                    qnaCategory = catsStart[0] || catsConv[0] || qnaCategory || '';
+                } else if (qnaActive) {
+                    const lastAssistant = [...conversation].reverse().find(m => m.role === 'assistant');
+                    const s = String(lastAssistant?.text || '');
+                    const mr = s.match(/Q\s*(\d+)\s*\/\s*(\d+)/i);
+                    if (mr) {
+                        const k = parseInt(mr[1], 10);
+                        const n = parseInt(mr[2], 10) || 20;
+                        qnaStep = Math.min(k + 1, n);
+                        if (qnaStep >= n + 1) qnaActive = false;
+                    }
+                    if (!qnaCategory) {
+                        const catsConv = detectCategoriesFromConversation(conversation);
+                        qnaCategory = catsConv[0] || '';
+                    }
+                }
+                if (qnaActive) flow = 'qna';
+                const assessmentComplete = !!lastAssessment;
+                const modules = qnaActive ? { qna: { step: qnaStep, category: qnaCategory } } : undefined;
                 const response = await fetchWithTimeout('/.netlify/functions/score', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ messages: conversation })
+                    body: JSON.stringify({ messages: conversation, flow, assessmentComplete, modules })
                 }, 60000);
 
                 if (!response.ok) {
@@ -246,9 +342,11 @@
                     let statusCode = response.status;
                     try {
                         const errorData = JSON.parse(dataText);
-                        const base = errorData.error || errorData.message || errorData.details || dataText;
+                        const base = errorData.error || errorData.message || dataText;
                         const extras = [];
                         if (errorData.status) statusCode = Number(errorData.status) || statusCode;
+                        if (errorData.details) extras.push(`details: ${errorData.details}`);
+                        extras.push(`status: ${statusCode}`);
                         if (Array.isArray(errorData.availableModels)) {
                             const modelsPreview = errorData.availableModels.slice(0, 10).join(', ');
                             extras.push(`models: ${modelsPreview}`);
@@ -398,7 +496,23 @@
         });
 
         // Inisialisasi grafik saat halaman siap
+        const loadQuestions = async () => {
+            try {
+                const resp = await fetchWithTimeout('/.netlify/functions/list?tab=pertanyaan', { method: 'GET' }, 60000);
+                const json = await resp.json().catch(() => ({}));
+                const items = Array.isArray(json.items) ? json.items : [];
+                questionsList.splice(0, questionsList.length);
+                for (const it of items) {
+                    const s0 = String(it.question || '').trim();
+                    const s1 = String(it.category || '').trim();
+                    if (!s0) continue;
+                    questionsList.push({ question: s0, category: s1 });
+                }
+                questionsLoaded = true;
+            } catch (_) {}
+        };
         initChart();
+        loadQuestions();
         loadSheetButton.click();
     </script>
 </body>

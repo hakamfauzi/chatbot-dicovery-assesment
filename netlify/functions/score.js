@@ -1,5 +1,7 @@
 // Import prompt sistem
-import { SYSTEM_PROMPT } from "../system-prompt.js";
+import { MAIN_PROMPT } from "../prompts/main_prompt.js";
+import { QUESTION_PROMPT } from "../prompts/question_prompt.js";
+import { DEVGUIDE_PROMPT } from "../prompts/devguide_prompt.js";
 
 // Panggil Gemini API via HTTP ke endpoint v1 (chat/multi-turn)
 const API_KEY = process.env.GEMINI_API_KEY;
@@ -42,8 +44,8 @@ const callGenerativeV1 = async (model, contents) => {
     const body = {
         contents,
         generationConfig: {
-            maxOutputTokens: Number(process.env.MAX_OUTPUT_TOKENS || 512),
-            temperature: Number(process.env.GENERATION_TEMPERATURE || 0.3),
+            maxOutputTokens: Number(process.env.MAX_OUTPUT_TOKENS || 768),
+            temperature: Number(process.env.GENERATION_TEMPERATURE || 0.2),
         },
     };
 
@@ -125,10 +127,6 @@ const normalizeMessagesToContents = (messages) => {
     const toRole = (r) => (r === 'assistant' || r === 'model') ? 'model' : 'user';
     const toText = (m) => m?.text ?? m?.content ?? m?.message ?? '';
     const contents = [];
-    // Sisipkan SYSTEM_PROMPT sebagai pesan awal untuk menuntun perilaku chatbot
-    if (SYSTEM_PROMPT) {
-        contents.push({ role: 'user', parts: [{ text: SYSTEM_PROMPT }] });
-    }
     for (const m of Array.isArray(messages) ? messages : []) {
         const role = toRole(m.role);
         const text = toText(m);
@@ -158,16 +156,30 @@ export const handler = async (event) => {
             // Mode chatbot: gunakan riwayat percakapan dari frontend
             contents = normalizeMessagesToContents(body.messages);
         } else if (body.narrative) {
-            // Kompatibilitas lama: satu input narasi
             const userNarrative = String(body.narrative);
-            const prompt = `${SYSTEM_PROMPT}\n\nPengguna: ${userNarrative}`;
-            contents = normalizeMessagesToContents([{ role: 'user', text: prompt }]);
+            contents = normalizeMessagesToContents([{ role: 'user', text: userNarrative }]);
         } else {
             return {
                 statusCode: 400,
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ error: 'Payload tidak valid. Sertakan "messages" (chat) atau "narrative".' }),
             };
+        }
+        const flow = String(body.flow || '').toLowerCase();
+        const wantsQna = flow === 'qna' || !!(body.modules && body.modules.questions) || JSON.stringify(body.messages || '').toLowerCase().includes('/qna');
+        const assessmentDone = body.assessmentComplete === true;
+        const wantsDevguide = (flow === 'devguide' || JSON.stringify(body.messages || '').toLowerCase().includes('/devguide') || body.devguide === true) && assessmentDone;
+        const preludeTexts = [];
+        if (MAIN_PROMPT) preludeTexts.push(MAIN_PROMPT);
+        if (wantsQna && QUESTION_PROMPT) preludeTexts.push(QUESTION_PROMPT);
+        if (wantsDevguide && DEVGUIDE_PROMPT) preludeTexts.push(DEVGUIDE_PROMPT);
+        const prelude = preludeTexts.map((t) => ({ role: 'user', parts: [{ text: t }] }));
+        contents = [...prelude, ...contents];
+        if (body.modules && body.modules.qna) {
+            const step = Number(body.modules.qna.step || 1);
+            const cat = String(body.modules.qna.category || '').trim();
+            const directive = `Mode QnA terkontrol: ajukan hanya Q${step}/20 untuk kategori "${cat}". Tampilkan satu baris "Q${step}/20: …" dan minta jawaban singkat pengguna. Jangan keluarkan pertanyaan lain.`;
+            contents.unshift({ role: 'user', parts: [{ text: directive }] });
         }
 
         // 3. Panggil Gemini API dengan fallback berjenjang
