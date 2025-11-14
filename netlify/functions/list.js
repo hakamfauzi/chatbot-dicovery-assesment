@@ -1,7 +1,7 @@
 import { google } from "googleapis";
 
 export const handler = async (event) => {
-  if (event.httpMethod !== "POST") {
+  if (event.httpMethod !== "GET") {
     return {
       statusCode: 405,
       headers: { "Content-Type": "application/json" },
@@ -10,29 +10,6 @@ export const handler = async (event) => {
   }
 
   try {
-    const body = JSON.parse(event.body || "{}");
-    const a = body.assessment || {};
-
-    // Validasi minimal
-    const required = [
-      "use_case_name",
-      "domain",
-      "impact",
-      "feasibility",
-      "total",
-      "priority",
-      "timestamp",
-    ];
-    for (const k of required) {
-      if (a[k] === undefined || a[k] === null || a[k] === "") {
-        return {
-          statusCode: 400,
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ error: `Field '${k}' kosong atau tidak ditemukan.` }),
-        };
-      }
-    }
-
     const clientEmail = (process.env.GOOGLE_CLIENT_EMAIL || process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || "").trim();
     const privateKeyRaw = (process.env.GOOGLE_PRIVATE_KEY || process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY || "").trim();
     const spreadsheetId = (process.env.GOOGLE_SHEETS_SPREADSHEET_ID || "").trim();
@@ -49,7 +26,6 @@ export const handler = async (event) => {
       };
     }
 
-    // Netlify menyimpan private key dengan \n, perlu diubah ke newline asli
     let pk = privateKeyRaw;
     if (pk.startsWith('"') && pk.endsWith('"')) {
       pk = pk.slice(1, -1);
@@ -59,50 +35,44 @@ export const handler = async (event) => {
     const auth = new google.auth.JWT({
       email: clientEmail,
       key: privateKey,
-      scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+      scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
     });
 
     const sheets = google.sheets({ version: "v4", auth });
 
-    const values = [
-      [
-        a.timestamp,
-        String(a.use_case_name),
-        String(a.domain),
-        Number(a.impact),
-        Number(a.feasibility),
-        Number(a.total),
-        String(a.priority),
-        String(a.rawText || ""),
-      ],
-    ];
-
-    const resp = await sheets.spreadsheets.values.append({
+    const resp = await sheets.spreadsheets.values.get({
       spreadsheetId,
       range,
-      valueInputOption: "USER_ENTERED",
-      insertDataOption: "INSERT_ROWS",
-      requestBody: { values },
     });
 
-    const updatedRange = resp?.data?.updates?.updatedRange || range;
+    const values = resp?.data?.values || [];
+    const items = values.map((row) => {
+      const impact = row[3] != null ? parseFloat(String(row[3]).replace(",", ".")) : null;
+      const feasibility = row[4] != null ? parseFloat(String(row[4]).replace(",", ".")) : null;
+      const total = row[5] != null ? parseFloat(String(row[5]).replace(",", ".")) : null;
+      return {
+        timestamp: row[0] || null,
+        use_case_name: row[1] || null,
+        domain: row[2] || null,
+        impact,
+        feasibility,
+        total,
+        priority: row[6] || null,
+        rawText: row[7] || null,
+      };
+    });
 
     return {
       statusCode: 200,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ok: true,
-        range: updatedRange,
-        written: values[0].length,
-      }),
+      body: JSON.stringify({ ok: true, range, count: items.length, items }),
     };
   } catch (err) {
-    console.error("Save function error:", err);
     return {
       statusCode: 500,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        error: "Gagal menyimpan ke Google Sheets.",
+        error: "Gagal membaca dari Google Sheets.",
         details:
           (err && err.response && err.response.data && err.response.data.error && err.response.data.error.message) ||
           err?.message || String(err),

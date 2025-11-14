@@ -33,9 +33,26 @@
             </div>
             <div class="control-row">
                 <button id="saveButton" disabled>Simpan ke Spreadsheet</button>
-                <button id="clearButton" class="secondary">Clear Chart</button>
-                <button id="reloadButton" class="secondary">Muat Riwayat</button>
+                <button id="loadSheetButton" class="secondary">Muat dari Spreadsheet</button>
                 <span id="saveStatus" class="status"></span>
+            </div>
+            <div class="sheet-list">
+                <h3>Daftar dari Spreadsheet</h3>
+                <div id="sheetCount" class="status"></div>
+                <table id="sheetTable" class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Timestamp</th>
+                            <th>Use case</th>
+                            <th>Domain</th>
+                            <th>Impact</th>
+                            <th>Feasibility</th>
+                            <th>Total</th>
+                            <th>Priority</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
             </div>
         </section>
     </main>
@@ -46,16 +63,33 @@
         const sendButton = document.getElementById('sendButton');
         const loading = document.getElementById('loading');
         const saveButton = document.getElementById('saveButton');
-        const clearButton = document.getElementById('clearButton');
-        const reloadButton = document.getElementById('reloadButton');
+        const loadSheetButton = document.getElementById('loadSheetButton');
         const saveStatus = document.getElementById('saveStatus');
+        const sheetCount = document.getElementById('sheetCount');
+        const sheetTable = document.getElementById('sheetTable');
         const mappingCanvas = document.getElementById('mappingChart');
 
         const conversation = [];
-        const assessments = [];
-        const STORAGE_KEY = 'usecase_assessments_v1';
+        const sheetItems = [];
         let lastAssessment = null;
         let mappingChart = null;
+
+        
+        // Helper: fetch dengan timeout menggunakan AbortController
+        const fetchWithTimeout = async (url, options = {}, ms = 60000) => {
+            const controller = new AbortController();
+            const id = setTimeout(() => controller.abort(), ms);
+            try {
+                return await fetch(url, { ...options, signal: controller.signal });
+            } catch (err) {
+                if (err?.name === 'AbortError' || String(err?.message || '').toLowerCase().includes('abort')) {
+                    throw new Error(`Timeout: permintaan melebihi batas waktu (${ms / 1000}s).`);
+                }
+                throw err;
+            } finally {
+                clearTimeout(id);
+            }
+        };
 
         const initChart = () => {
             if (!mappingCanvas) return;
@@ -71,10 +105,12 @@
                         parsing: false,
                         pointBackgroundColor: (context) => {
                             const raw = context.raw || {};
+                            if (raw.invalid) return '#9e9e9e';
                             return getColorByPriority(raw.priority);
                         },
                         pointBorderColor: (context) => {
                             const raw = context.raw || {};
+                            if (raw.invalid) return '#9e9e9e';
                             return getColorByPriority(raw.priority);
                         }
                     }]
@@ -111,46 +147,31 @@
             return '#673ab7'; // fallback ungu
         };
 
+        const getPriorityClass = (priority) => {
+            const p = String(priority || '').toLowerCase();
+            if (p.includes('quick')) return 'badge-priority-quick';
+            if (p.includes('second')) return 'badge-priority-second';
+            if (p.includes('watch') || p.includes('experiment')) return 'badge-priority-watch';
+            if (p.includes('defer')) return 'badge-priority-defer';
+            return 'badge-priority-other';
+        };
+
         const addAssessmentToChart = (a) => {
             if (!mappingChart) return;
+            const x = Number.isFinite(a?.feasibility) ? a.feasibility : 0;
+            const y = Number.isFinite(a?.impact) ? a.impact : 0;
+            const invalid = !(Number.isFinite(a?.feasibility) && Number.isFinite(a?.impact));
             mappingChart.data.datasets[0].data.push({
-                x: a.feasibility,
-                y: a.impact,
+                x,
+                y,
                 label: a.use_case_name,
-                priority: a.priority
+                priority: a.priority,
+                invalid
             });
             mappingChart.update();
         };
 
-        const persistAssessments = () => {
-            try {
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(assessments));
-            } catch (e) {
-                console.warn('Persist gagal:', e);
-            }
-        };
-
-        const loadAssessments = () => {
-            try {
-                const raw = localStorage.getItem(STORAGE_KEY);
-                if (!raw) return;
-                const arr = JSON.parse(raw);
-                if (Array.isArray(arr)) {
-                    // Tambahkan ke memori dan chart
-                    for (const a of arr) {
-                        if (a && typeof a === 'object') {
-                            assessments.push(a);
-                            addAssessmentToChart(a);
-                        }
-                    }
-                    // Aktifkan tombol simpan jika ada titik terakhir
-                    lastAssessment = assessments[assessments.length - 1] || null;
-                    saveButton.disabled = !lastAssessment;
-                }
-            } catch (e) {
-                console.warn('Load riwayat gagal:', e);
-            }
-        };
+        
 
         const parseNumber = (s) => {
             if (s == null) return null;
@@ -213,11 +234,11 @@
             sendButton.disabled = true;
 
             try {
-                const response = await fetch('/.netlify/functions/score', {
+                const response = await fetchWithTimeout('/.netlify/functions/score', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ messages: conversation })
-                });
+                }, 60000);
 
                 if (!response.ok) {
                     const dataText = await response.text();
@@ -250,10 +271,8 @@
                 // Coba parsing hasil /score menjadi objek terstruktur untuk grafik & simpan
                 const parsed = parseAssessmentFromText(reply);
                 if (parsed) {
+                    parsed.rawText = reply;
                     lastAssessment = parsed;
-                    assessments.push(parsed);
-                    addAssessmentToChart(parsed);
-                    persistAssessments();
                     saveButton.disabled = false;
                     saveStatus.textContent = 'Siap disimpan ke Google Sheets.';
                 } else {
@@ -283,128 +302,104 @@
             saveButton.disabled = true;
             saveStatus.textContent = 'Menyimpan…';
             try {
-                const resp = await fetch('/.netlify/functions/save', {
+                const resp = await fetchWithTimeout('/.netlify/functions/save', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ assessment: lastAssessment })
-                });
+                }, 60000);
                 const json = await resp.json().catch(() => ({}));
                 if (!resp.ok) {
                     const msg = json.error || json.message || 'Gagal menyimpan.';
                     throw new Error(msg);
                 }
                 saveStatus.textContent = 'Tersimpan ✔';
+                loadSheetButton.click();
             } catch (err) {
                 console.error('Save error:', err);
-                saveStatus.textContent = `Gagal: ${err.message}`;
+                const message = /timeout/i.test(String(err?.message || ''))
+                    ? 'Gagal: proses simpan melebihi batas waktu.'
+                    : `Gagal: ${err.message}`;
+                saveStatus.textContent = message;
             } finally {
                 saveButton.disabled = false;
             }
         });
 
-        clearButton.addEventListener('click', () => {
-            lastAssessment = null;
-            if (mappingChart) {
-                mappingChart.data.datasets[0].data = [];
-                mappingChart.update();
-            }
-            saveButton.disabled = true;
-            saveStatus.textContent = '';
-        });
+        
 
-        reloadButton.addEventListener('click', () => {
-            if (mappingChart) {
-                mappingChart.data.datasets[0].data = [];
-                mappingChart.update();
+        loadSheetButton.addEventListener('click', async () => {
+            try {
+                sheetItems.splice(0, sheetItems.length);
+                if (mappingChart) {
+                    mappingChart.data.datasets[0].data = [];
+                    mappingChart.update();
+                }
+                const resp = await fetchWithTimeout('/.netlify/functions/list', { method: 'GET' }, 60000);
+                const json = await resp.json().catch(() => ({}));
+                if (!resp.ok) {
+                    const parts = [];
+                    if (json.error) parts.push(json.error);
+                    if (json.details) parts.push(json.details);
+                    const msg = parts.length ? parts.join(' — ') : 'Gagal memuat dari Sheets.';
+                    throw new Error(msg);
+                }
+                const items = Array.isArray(json.items) ? json.items : [];
+                for (const it of items) {
+                    const a = {
+                        timestamp: it.timestamp || '',
+                        use_case_name: it.use_case_name || '',
+                        domain: it.domain || '',
+                        impact: parseNumber(it.impact),
+                        feasibility: parseNumber(it.feasibility),
+                        total: parseNumber(it.total),
+                        priority: it.priority || '',
+                        rawText: it.rawText || ''
+                    };
+                    const s0 = String(a.timestamp || '').trim().toLowerCase();
+                    const s1 = String(a.use_case_name || '').trim().toLowerCase();
+                    const s2 = String(a.domain || '').trim().toLowerCase();
+                    const s6 = String(it.priority || '').trim().toLowerCase();
+                    const s7raw = String(it.rawText || '').trim().toLowerCase();
+                    const isHeader = (s0 === 'timestamp' && s1 === 'use_case_name' && s2 === 'domain' && s6 === 'priority' && s7raw === 'rawtext');
+                    if (isHeader) continue;
+                    sheetItems.push(a);
+                    if (a.impact != null && a.feasibility != null && a.total != null) {
+                        addAssessmentToChart(a);
+                    }
+                }
+                saveStatus.textContent = items.length > 0 ? 'Data dimuat dari Sheets.' : '';
+                if (sheetCount) sheetCount.textContent = `Dimuat dari Sheets: ${sheetItems.length} item`;
+                const renderSheetList = (rows) => {
+                    if (!sheetTable) return;
+                    const tbody = sheetTable.querySelector('tbody');
+                    if (!tbody) return;
+                    tbody.innerHTML = '';
+                    for (const x of rows) {
+                        const invalid = !(Number.isFinite(x?.impact) && Number.isFinite(x?.feasibility) && Number.isFinite(x?.total));
+                        const tr = document.createElement('tr');
+                        if (invalid) tr.className = 'row-invalid';
+                        const badgeClass = getPriorityClass(x.priority);
+                        tr.innerHTML = `
+                            <td>${x.timestamp || ''}</td>
+                            <td>${x.use_case_name || ''}</td>
+                            <td>${x.domain || ''}</td>
+                            <td class="num">${x.impact ?? ''}</td>
+                            <td class="num">${x.feasibility ?? ''}</td>
+                            <td class="num">${x.total ?? ''}</td>
+                            <td><span class="badge ${badgeClass}">${x.priority || ''}</span></td>
+                        `;
+                        tbody.appendChild(tr);
+                    }
+                };
+                renderSheetList(sheetItems);
+            } catch (err) {
+                saveStatus.textContent = `Gagal: ${err.message}`;
             }
-            loadAssessments();
         });
 
         // Inisialisasi grafik saat halaman siap
         initChart();
-        loadAssessments();
+        loadSheetButton.click();
     </script>
 </body>
 </html>
-
-<!-- <script>
-        const scoreButton = document.getElementById('scoreButton');
-        const narrativeInput = document.getElementById('narrativeInput');
-        const resultOutput = document.getElementById('resultOutput');
-        const loading = document.getElementById('loading');
-
-        scoreButton.addEventListener('click', async () => {
-            const narrative = narrativeInput.value;
-            if (!narrative) {
-                alert('Mohon masukkan narasi use case.');
-                return;
-            }
-
-            // Tampilkan loading & bersihkan hasil lama
-            loading.style.display = 'flex';
-            resultOutput.textContent = '';
-            scoreButton.disabled = true;
-
-            try {
-                // --- [PERUBAHAN 1] ---
-                // Kita "simulasikan" perintah chatbot
-                // Kita instruksikan AI untuk menerima narasi DAN langsung /score
-                const userMessage = `/narrative\n${narrative}\n\n/score`;
-
-                // --- [PERUBAHAN 2] ---
-                // Sesuaikan payload agar cocok dengan backend chatbot (score.js)
-                const bodyPayload = {
-                    history: [], // UI ini selalu memulai sesi baru
-                    message: userMessage
-                };
-                
-                // Panggil backend serverless kita
-                const response = await fetch('/.netlify/functions/score', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    // Gunakan payload baru
-                    body: JSON.stringify(bodyPayload) 
-                });
-
-                // --- [TANPA PERUBAHAN] ---
-                // Blok error handling Anda sudah sangat bagus dan
-                // kompatibel dengan backend (errorData.details, .status, .availableModels)
-                if (!response.ok) {
-                    const text = await response.text();
-                    let msg;
-                    try {
-                        const errorData = JSON.parse(text);
-                        const base = errorData.details || errorData.error || errorData.message || text;
-                        const extras = [];
-                        if (errorData.status) extras.push(`status: ${errorData.status}`);
-                        if (Array.isArray(errorData.availableModels)) {
-                            const modelsPreview = errorData.availableModels.slice(0, 10).join(', ');
-                            extras.push(`availableModels: ${modelsPreview}`);
-                        }
-                        msg = [base, ...extras].join('\n');
-                    } catch {
-                        msg = text;
-                    }
-                    throw new Error(msg || `HTTP error! status: ${response.status}`);
-                }
-
-                const data = await response.json();
-                
-                // --- [PERUBAHAN 3] ---
-                // Backend chatbot (score.js) mengirim 'messageText' dan 'model'
-                // Kita tampilkan keduanya
-                const modelInfo = data.model ? `(Model: ${data.model})\n\n` : "";
-                resultOutput.textContent = `${modelInfo}${data.messageText}`;
-
-            } catch (error) {
-                console.error('Error fetching score:', error);
-                resultOutput.textContent = `Error: Gagal mendapatkan skor.\n${error.message}`;
-            } finally {
-                // Sembunyikan loading & aktifkan tombol lagi
-                loading.style.display = 'none';
-                scoreButton.disabled = false;
-            }
-        });
-    </script>
-</body>
-</html> -->

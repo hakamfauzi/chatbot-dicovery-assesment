@@ -4,10 +4,29 @@ import { SYSTEM_PROMPT } from "../system-prompt.js";
 // Panggil Gemini API via HTTP ke endpoint v1 (chat/multi-turn)
 const API_KEY = process.env.GEMINI_API_KEY;
 
+// Helper: fetch dengan timeout menggunakan AbortController
+const fetchWithTimeout = async (url, options = {}, ms = 60000) => {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), ms);
+    try {
+        return await fetch(url, { ...options, signal: controller.signal });
+    } catch (err) {
+        // Map abort ke status 504 agar penanganan error konsisten
+        if (err?.name === 'AbortError' || String(err?.message || '').toLowerCase().includes('abort')) {
+            const e = new Error(`Timeout after ${ms}ms`);
+            e.status = 504;
+            throw e;
+        }
+        throw err;
+    } finally {
+        clearTimeout(id);
+    }
+};
+
 // Mendapatkan daftar model yang tersedia untuk API key (diagnostik)
 const listModelsV1 = async () => {
     const url = `https://generativelanguage.googleapis.com/v1/models?key=${API_KEY}`;
-    const resp = await fetch(url, { method: "GET" });
+    const resp = await fetchWithTimeout(url, { method: "GET" }, 12000);
     if (!resp.ok) {
         const text = await resp.text();
         return { error: text, status: resp.status };
@@ -20,13 +39,19 @@ const listModelsV1 = async () => {
 const callGenerativeV1 = async (model, contents) => {
     const clean = sanitizeModelName(model);
     const url = `https://generativelanguage.googleapis.com/v1/models/${clean}:generateContent?key=${API_KEY}`;
-    const body = { contents };
+    const body = {
+        contents,
+        generationConfig: {
+            maxOutputTokens: Number(process.env.MAX_OUTPUT_TOKENS || 512),
+            temperature: Number(process.env.GENERATION_TEMPERATURE || 0.3),
+        },
+    };
 
-    const resp = await fetch(url, {
+    const resp = await fetchWithTimeout(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
-    });
+    }, Number(process.env.MODEL_TIMEOUT_MS || 60000));
 
     if (!resp.ok) {
         const text = await resp.text();
@@ -55,18 +80,17 @@ const generateWithFallback = async (contents) => {
     // Urutan preferensi: 1.5 pro/flash, variasi -latest, lalu pro lama
     candidates.push(
         "gemini-2.5-flash",
-        "gemini-1.5-pro",
         "gemini-1.5-flash",
-        "gemini-1.5-pro-latest",
-        "gemini-1.5-flash-latest",
-        "gemini-pro",
-        "gemini-pro-latest",
-        "gemini-1.0-pro",
-        "gemini-1.0-pro-latest"
+        // "gemini-1.5-pro"
     );
 
     // Coba ambil daftar model dari API untuk menyaring kandidat
-    let availableModels = await listModelsV1();
+    let availableModels;
+    try {
+        availableModels = await listModelsV1();
+    } catch (_) {
+        availableModels = undefined;
+    }
     const availableSet = Array.isArray(availableModels)
         ? new Set(availableModels.map(sanitizeModelName))
         : null;
@@ -75,7 +99,7 @@ const generateWithFallback = async (contents) => {
     }
 
     const retryStatuses = new Set([429, 500, 503]);
-    const delaysMs = [600, 1500, 3000]; // exponential-ish backoff
+    const delaysMs = [500, 1200]; // pangkas retry agar tidak mendekati timeout CLI
     let lastError;
     for (const name of candidates) {
         for (let attempt = 0; attempt < delaysMs.length; attempt++) {

@@ -183,3 +183,58 @@ button:not(:disabled):hover {
     background: #607d8b;
 }
 
+.sheet-list {
+    margin-top: 12px;
+}
+
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    overflow: hidden;
+    border-radius: 8px;
+}
+
+.data-table thead th {
+    background: #f5f7fb;
+    color: #0a2e6d;
+    font-weight: 700;
+    text-align: left;
+    padding: 10px 12px;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+.data-table tbody td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #eeeeee;
+}
+
+.data-table tbody tr:hover {
+    background: #f9fcff;
+}
+
+.data-table tbody tr.row-invalid {
+    background: #fff8e1;
+}
+
+.data-table td.num {
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+
+.badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 0.85em;
+    font-weight: 600;
+    border: 1px solid transparent;
+}
+
+.badge-priority-quick { background: #e8f5e9; color: #2e7d32; border-color: #2e7d32; }
+.badge-priority-second { background: #fff8e1; color: #f9a825; border-color: #f9a825; }
+.badge-priority-watch { background: #e3f2fd; color: #1565c0; border-color: #1565c0; }
+.badge-priority-defer { background: #f5f5f5; color: #616161; border-color: #9e9e9e; }
+.badge-priority-other { background: #ede7f6; color: #673ab7; border-color: #673ab7; }
+
