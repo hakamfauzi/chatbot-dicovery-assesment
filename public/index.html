@@ -18,13 +18,13 @@
             <div id="chatMessages" class="chat-messages"></div>
             <div id="loading" style="display: none;" class="loading-row">
                 <div class="spinner"></div>
-                <span>Meminta jawaban dari Gemini...</span>
+                <span>Meminta jawaban LLM...</span>
             </div>
             <div class="provider-row">
                 <label class="provider-label">Model:
                   <select id="providerSelect" class="provider-select">
                     <option value="gemini">Gemini</option>
-                    <option value="groq">GPT‑OSS (Groq)</option>
+                    <option value="groq">GPT‑OSS</option>
                   </select>
                 </label>
             </div>
@@ -266,7 +266,8 @@
         };
 
         const parseAssessmentFromText = (text) => {
-            const t = String(text || '');
+            let t = String(text || '');
+            t = t.replace(/\*\*/g, '');
             const find = (re) => {
                 const m = t.match(re);
                 return m ? m[1].trim() : null;
@@ -277,7 +278,7 @@
             const impactStr = find(/Impact[^:]*:\s*([0-9]+(?:[\.,][0-9]+)?)/i);
             const feasStr = find(/Feasibility[^:]*:\s*([0-9]+(?:[\.,][0-9]+)?)/i);
             const totalStr = find(/Total[^:]*:\s*([0-9]+(?:[\.,][0-9]+)?)/i);
-            const priority = find(/Priority\s*class:\s*([^\n]+)/i);
+            const priority = find(/Priority(?:\s*class)?\s*:\s*([^\n]+)/i);
 
             const impact = parseNumber(impactStr);
             const feasibility = parseNumber(feasStr);
