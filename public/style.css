@@ -155,6 +155,39 @@ button:not(:disabled):hover {
     gap: 8px;
 }
 
+/* Provider toggle near Send button */
+.provider-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: 8px;
+    font-size: 0.9em;
+    color: #555;
+}
+.provider-select {
+    padding: 6px 8px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    font-size: 0.95em;
+    background: #fff;
+    color: #333;
+}
+.provider-row {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    margin-top: 4px;
+}
+
+#sendButton {
+    min-width: 96px;
+    padding: 8px 12px;
+    font-size: 0.95em;
+    font-weight: 600;
+    margin-top: 8px;
+    border-radius: 6px;
+}
+
 /* Mapping section */
 .mapping-section {
     margin-top: 24px;

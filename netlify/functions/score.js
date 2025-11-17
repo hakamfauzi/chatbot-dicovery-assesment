@@ -63,11 +63,11 @@ const callGenerativeV1 = async (model, contents) => {
     }
 
     const data = await resp.json();
-    const text = (data?.candidates?.[0]?.content?.parts || [])
-        .map((p) => p?.text)
-        .filter(Boolean)
-        .join("");
-    return text;
+    const parts = (data?.candidates?.[0]?.content?.parts || []);
+    const text = parts.map((p) => p?.text).filter(Boolean).join("");
+    if (String(text || "").trim()) return text;
+    const alt = parts.map((p) => typeof p === "string" ? p : JSON.stringify(p)).join("\n");
+    return String(alt || "Tidak ada respon teks dari model.");
 };
 
 // Sanitasi nama model agar kompatibel dengan path v1 (hapus prefix "models/")

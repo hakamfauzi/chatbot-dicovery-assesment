@@ -20,6 +20,14 @@
                 <div class="spinner"></div>
                 <span>Meminta jawaban dari Gemini...</span>
             </div>
+            <div class="provider-row">
+                <label class="provider-label">Model:
+                  <select id="providerSelect" class="provider-select">
+                    <option value="gemini">Gemini</option>
+                    <option value="groq">GPT‑OSS (Groq)</option>
+                  </select>
+                </label>
+            </div>
             <div class="chat-input-row">
                 <input id="chatInput" type="text" placeholder="Tulis pesan dan tekan Enter..." />
                 <button id="sendButton">Kirim</button>
@@ -70,6 +78,7 @@
         const generateButton = document.getElementById('generateButton');
         const generateDocxButton = document.getElementById('generateDocxButton');
         const saveStatus = document.getElementById('saveStatus');
+        const providerSelect = document.getElementById('providerSelect');
         const sheetCount = document.getElementById('sheetCount');
         const sheetTable = document.getElementById('sheetTable');
         const mappingCanvas = document.getElementById('mappingChart');
@@ -335,11 +344,12 @@
                 if (qnaActive) flow = 'qna';
                 const assessmentComplete = !!lastAssessment;
                 const modules = qnaActive ? { qna: { step: qnaStep, category: qnaCategory } } : undefined;
-                const response = await fetchWithTimeout('/.netlify/functions/score', {
+                const scorePath = (providerSelect?.value === 'groq') ? '/.netlify/functions/score_groq' : '/.netlify/functions/score';
+                const response = await fetchWithTimeout(scorePath, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ messages: conversation, flow, assessmentComplete, modules })
-                }, 60000);
+                }, 120000);
 
                 if (!response.ok) {
                     const dataText = await response.text();
@@ -367,7 +377,9 @@
                 }
 
                 const data = await response.json();
-                const reply = data.message || '(kosong)';
+                const reply = (typeof data.message === 'string' && data.message.trim())
+                    ? data.message
+                    : 'Model tidak mengembalikan teks. Coba /start atau ringkas narasi.';
                 conversation.push({ role: 'assistant', text: reply });
                 addMessage('assistant', reply);
 
@@ -686,6 +698,13 @@
         };
         initChart();
         loadQuestions();
+        try {
+            const savedProv = window.localStorage.getItem('provider') || '';
+            if (savedProv) providerSelect.value = savedProv;
+        } catch (_) {}
+        providerSelect.addEventListener('change', () => {
+            try { window.localStorage.setItem('provider', providerSelect.value); } catch (_) {}
+        });
         loadSheetButton.click();
     </script>
 </body>
