@@ -59,17 +59,11 @@ export const handler = async (event) => {
         const c2 = String(r[2] || "").trim().toLowerCase();
         return c0 === "no" || c1 === "pertanyaan" || c2 === "kategori";
       };
-      const toNumber = (v) => {
-        const s = String(v ?? '').trim();
-        if (!s) return null;
-        const n = parseInt(s.replace(',', '.'), 10);
-        return Number.isFinite(n) ? n : null;
-      };
       items = values
         .filter((row) => row && (row[1] || row[2]))
         .filter((row) => !isHeader(row))
         .map((row) => ({
-          no: toNumber(row[0]),
+          no: row[0] || null,
           question: row[1] || null,
           category: row[2] || null,
         }));

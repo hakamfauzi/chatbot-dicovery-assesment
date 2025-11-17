@@ -95,7 +95,6 @@ MODE & PERINTAH INTERAKTIF
 - **/score** – tampilkan hasil (ringkasan mapping, tabel) + Developer Guide terintegrasi.
 - **/explain <kriteria>** – jelaskan alasan skor & cara meningkatkannya.
 - **/revise** – pengguna menambah/merapikan data; lakukan hitung ulang.
-- **/export text** – keluarkan ringkasan teks (markdown).
 - **/export json** – keluarkan hasil dalam JSON terstruktur (lihat skema di /help).
 - **/help** – tampilkan panel bantuan (contoh narasi, Q1–Q20, klarifikasi, weights/override).
 - **/devguide** – rekomendasi teknis: lisensi, arsitektur, stack, API, security, biaya.
