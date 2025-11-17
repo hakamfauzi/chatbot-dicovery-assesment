@@ -35,6 +35,7 @@
                 <button id="saveButton" disabled>Simpan ke Spreadsheet</button>
                 <button id="loadSheetButton" class="secondary">Muat dari Spreadsheet</button>
                 <button id="generateButton" class="secondary">Generate Document (PDF)</button>
+                <button id="generateDocxButton" class="secondary">Generate Document (DOCX)</button>
                 <span id="saveStatus" class="status"></span>
             </div>
             <div class="sheet-list">
@@ -67,6 +68,7 @@
         const saveButton = document.getElementById('saveButton');
         const loadSheetButton = document.getElementById('loadSheetButton');
         const generateButton = document.getElementById('generateButton');
+        const generateDocxButton = document.getElementById('generateDocxButton');
         const saveStatus = document.getElementById('saveStatus');
         const sheetCount = document.getElementById('sheetCount');
         const sheetTable = document.getElementById('sheetTable');
@@ -491,9 +493,64 @@
             }
         };
 
+        const generateDocx = async (assessment, includeQna) => {
+            const basePayload = {
+                include_qna: !!includeQna,
+                include_devguide: false,
+                assessment,
+                conversation: includeQna ? conversation : [],
+                project_profile: {}
+            };
+            const resp = await fetchWithTimeout('/.netlify/functions/generate', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ...basePayload, format: 'docx' })
+            }, 60000);
+            const blob = await resp.blob();
+            if (!resp.ok) {
+                const txt = await blob.text();
+                throw new Error(txt || `HTTP ${resp.status}`);
+            }
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `Usecase_${String(assessment?.use_case_name || '').replace(/[^a-z0-9]+/gi,'_')}.docx`;
+            a.click();
+            URL.revokeObjectURL(url);
+        };
+
         generateButton.addEventListener('click', async () => {
             if (!lastAssessment) { alert('Hasil scoring belum tersedia.'); return; }
             await generateAssessment(lastAssessment, true);
+        });
+
+        generateDocxButton.addEventListener('click', async () => {
+            if (!lastAssessment) { alert('Hasil scoring belum tersedia.'); return; }
+            try {
+                const basePayload = {
+                    include_qna: true,
+                    include_devguide: false,
+                    assessment: lastAssessment,
+                    conversation: conversation,
+                    project_profile: {}
+                };
+                const resp = await fetchWithTimeout('/.netlify/functions/generate', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ...basePayload, format: 'docx' })
+                }, 60000);
+                const blob = await resp.blob();
+                if (!resp.ok) {
+                    const txt = await blob.text();
+                    throw new Error(txt || `HTTP ${resp.status}`);
+                }
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `Usecase_${String(lastAssessment?.use_case_name || '').replace(/[^a-z0-9]+/gi,'_')}.docx`;
+                a.click();
+                URL.revokeObjectURL(url);
+            } catch (err) {
+                alert(`Gagal generate DOCX: ${err.message}`);
+            }
         });
 
         
@@ -559,12 +616,15 @@
                             <td class="num">${x.feasibility ?? ''}</td>
                             <td class="num">${x.total ?? ''}</td>
                             <td><span class="badge ${badgeClass}">${x.priority || ''}</span></td>
-                            <td><button class="btn-generate-row" data-idx="${i}">Generate</button></td>
+                            <td class="actions">
+                              <button class="btn-gen-pdf-row" data-idx="${i}">PDF</button>
+                              <button class="btn-gen-docx-row" data-idx="${i}">DOCX</button>
+                            </td>
                         `;
                         tbody.appendChild(tr);
                     }
-                    const btns = tbody.querySelectorAll('.btn-generate-row');
-                    btns.forEach((btn) => {
+                    const btnsPdf = tbody.querySelectorAll('.btn-gen-pdf-row');
+                    btnsPdf.forEach((btn) => {
                         btn.addEventListener('click', async () => {
                             const idx = parseInt(btn.getAttribute('data-idx'), 10);
                             const x = rows[idx];
@@ -580,6 +640,25 @@
                                 rawText: x.rawText || ''
                             };
                             await generateAssessment(a, false);
+                        });
+                    });
+                    const btnsDocx = tbody.querySelectorAll('.btn-gen-docx-row');
+                    btnsDocx.forEach((btn) => {
+                        btn.addEventListener('click', async () => {
+                            const idx = parseInt(btn.getAttribute('data-idx'), 10);
+                            const x = rows[idx];
+                            const invalid = !(Number.isFinite(x?.impact) && Number.isFinite(x?.feasibility) && Number.isFinite(x?.total));
+                            if (invalid) { alert('Baris tidak valid untuk generate.'); return; }
+                            const a = {
+                                use_case_name: x.use_case_name || '',
+                                domain: x.domain || '',
+                                impact: Number(x.impact) || 0,
+                                feasibility: Number(x.feasibility) || 0,
+                                total: Number(x.total) || 0,
+                                priority: x.priority || '',
+                                rawText: x.rawText || ''
+                            };
+                            await generateDocx(a, false);
                         });
                     });
                 };

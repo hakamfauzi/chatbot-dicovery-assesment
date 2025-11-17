@@ -11,9 +11,10 @@
   "description": "",
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
+    "@sparticuz/chromium": "^126.0.0",
+    "docx": "^9.5.1",
     "googleapis": "^135.0.0",
-    "puppeteer-core": "^22.10.0",
-    "@sparticuz/chromium": "^126.0.0"
+    "puppeteer-core": "^22.10.0"
   },
   "type": "module"
 }
