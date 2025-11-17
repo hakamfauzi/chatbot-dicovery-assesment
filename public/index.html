@@ -34,6 +34,7 @@
             <div class="control-row">
                 <button id="saveButton" disabled>Simpan ke Spreadsheet</button>
                 <button id="loadSheetButton" class="secondary">Muat dari Spreadsheet</button>
+                <button id="generateButton" class="secondary">Generate Document (PDF)</button>
                 <span id="saveStatus" class="status"></span>
             </div>
             <div class="sheet-list">
@@ -49,6 +50,7 @@
                             <th>Feasibility</th>
                             <th>Total</th>
                             <th>Priority</th>
+                            <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody></tbody>
@@ -64,6 +66,7 @@
         const loading = document.getElementById('loading');
         const saveButton = document.getElementById('saveButton');
         const loadSheetButton = document.getElementById('loadSheetButton');
+        const generateButton = document.getElementById('generateButton');
         const saveStatus = document.getElementById('saveStatus');
         const sheetCount = document.getElementById('sheetCount');
         const sheetTable = document.getElementById('sheetTable');
@@ -423,6 +426,76 @@
             }
         });
 
+        const buildQnaFromConversation = (conv) => {
+            const out = [];
+            for (let i = 0; i < conv.length; i++) {
+                const m = conv[i];
+                const t = String(m?.text || '');
+                const q = t.match(/Q\s*(\d+)\s*\/\s*(\d+)\s*:\s*(.+)/i);
+                if (m.role === 'assistant' && q) {
+                    const num = parseInt(q[1], 10);
+                    const question = q[3].trim();
+                    let answer = '';
+                    for (let j = i + 1; j < conv.length; j++) {
+                        if (conv[j].role === 'user') { answer = String(conv[j].text || '').trim(); break; }
+                    }
+                    out.push({ number: num, question, answer });
+                }
+            }
+            return out;
+        };
+
+        const generateAssessment = async (assessment, includeQna) => {
+            const basePayload = {
+                include_qna: !!includeQna,
+                include_devguide: false,
+                assessment,
+                conversation: includeQna ? conversation : [],
+                project_profile: {}
+            };
+            const tryGenerate = async (format) => {
+                const resp = await fetchWithTimeout('/.netlify/functions/generate', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ...basePayload, format })
+                }, 60000);
+                if (!resp.ok) {
+                    const txt = await resp.text();
+                    throw new Error(txt || `HTTP ${resp.status}`);
+                }
+                return resp;
+            };
+            try {
+                const resp = await tryGenerate('pdf');
+                const blob = await resp.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `Usecase_${String(assessment?.use_case_name || '').replace(/[^a-z0-9]+/gi,'_')}.pdf`;
+                a.click();
+                URL.revokeObjectURL(url);
+            } catch (errPdf) {
+                try {
+                    const resp = await tryGenerate('html');
+                    const html = await resp.text();
+                    const blob = new Blob([html], { type: 'text/html' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `Usecase_${String(assessment?.use_case_name || '').replace(/[^a-z0-9]+/gi,'_')}.html`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                    alert('Generator PDF belum tersedia di lingkungan lokal; file HTML disediakan sebagai fallback.');
+                } catch (errHtml) {
+                    alert(`Gagal generate: ${errPdf.message || errHtml.message}`);
+                }
+            }
+        };
+
+        generateButton.addEventListener('click', async () => {
+            if (!lastAssessment) { alert('Hasil scoring belum tersedia.'); return; }
+            await generateAssessment(lastAssessment, true);
+        });
+
         
 
         loadSheetButton.addEventListener('click', async () => {
@@ -472,7 +545,8 @@
                     const tbody = sheetTable.querySelector('tbody');
                     if (!tbody) return;
                     tbody.innerHTML = '';
-                    for (const x of rows) {
+                    for (let i = 0; i < rows.length; i++) {
+                        const x = rows[i];
                         const invalid = !(Number.isFinite(x?.impact) && Number.isFinite(x?.feasibility) && Number.isFinite(x?.total));
                         const tr = document.createElement('tr');
                         if (invalid) tr.className = 'row-invalid';
@@ -485,9 +559,29 @@
                             <td class="num">${x.feasibility ?? ''}</td>
                             <td class="num">${x.total ?? ''}</td>
                             <td><span class="badge ${badgeClass}">${x.priority || ''}</span></td>
+                            <td><button class="btn-generate-row" data-idx="${i}">Generate</button></td>
                         `;
                         tbody.appendChild(tr);
                     }
+                    const btns = tbody.querySelectorAll('.btn-generate-row');
+                    btns.forEach((btn) => {
+                        btn.addEventListener('click', async () => {
+                            const idx = parseInt(btn.getAttribute('data-idx'), 10);
+                            const x = rows[idx];
+                            const invalid = !(Number.isFinite(x?.impact) && Number.isFinite(x?.feasibility) && Number.isFinite(x?.total));
+                            if (invalid) { alert('Baris tidak valid untuk generate.'); return; }
+                            const a = {
+                                use_case_name: x.use_case_name || '',
+                                domain: x.domain || '',
+                                impact: Number(x.impact) || 0,
+                                feasibility: Number(x.feasibility) || 0,
+                                total: Number(x.total) || 0,
+                                priority: x.priority || '',
+                                rawText: x.rawText || ''
+                            };
+                            await generateAssessment(a, false);
+                        });
+                    });
                 };
                 renderSheetList(sheetItems);
             } catch (err) {

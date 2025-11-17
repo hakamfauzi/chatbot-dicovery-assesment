@@ -34,7 +34,7 @@ export const handler = async (event) => {
     }
 
     const clientEmail = (process.env.GOOGLE_CLIENT_EMAIL || process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || "").trim();
-    const privateKeyRaw = (process.env.GOOGLE_PRIVATE_KEY || process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY || "").trim();
+    const privateKeyRaw = (process.env.GOOGLE_PRIVATE_KEY || process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY || process.env.GOOGLE_PRIVATE_KEY_BASE64 || "").trim();
     const spreadsheetId = (process.env.GOOGLE_SHEETS_SPREADSHEET_ID || "").trim();
     const range = (process.env.GOOGLE_SHEETS_RANGE || "hasil_llm!A:H").trim();
 
@@ -51,10 +51,17 @@ export const handler = async (event) => {
 
     // Netlify menyimpan private key dengan \n, perlu diubah ke newline asli
     let pk = privateKeyRaw;
+    // Decode base64 jika disediakan
+    const looksBase64 = /^[A-Za-z0-9+/=]+$/.test(pk) && pk.length > 100 && pk.includes("=");
+    if (looksBase64) {
+      try { pk = Buffer.from(pk, 'base64').toString('utf8'); } catch {}
+    }
+    // Buang kutip pembuka/penutup jika ada
     if (pk.startsWith('"') && pk.endsWith('"')) {
       pk = pk.slice(1, -1);
     }
-    const privateKey = pk.replace(/\\n/g, "\n");
+    // Ubah \n menjadi newline asli dan buang \r (Windows)
+    const privateKey = pk.replace(/\\n/g, "\n").replace(/\r/g, "");
 
     const auth = new google.auth.JWT({
       email: clientEmail,
