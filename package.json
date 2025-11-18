@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --coverage"
   },
   "keywords": [],
   "author": "",
@@ -16,5 +16,25 @@
     "googleapis": "^135.0.0",
     "puppeteer-core": "^22.10.0"
   },
-  "type": "module"
+  "type": "module",
+  "devDependencies": {
+    "jest": "^29.7.0"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "collectCoverageFrom": [
+      "netlify/functions/save.js"
+    ],
+    "coverageThreshold": {
+      "global": {
+        "branches": 80,
+        "functions": 80,
+        "lines": 80,
+        "statements": 80
+      }
+    },
+    "testMatch": [
+      "**/tests/**/*.test.js"
+    ]
+  }
 }

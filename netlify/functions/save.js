@@ -80,7 +80,8 @@ export const handler = async (event) => {
       const t = String(raw || "");
       const idx = t.toLowerCase().indexOf(String(label || "").toLowerCase());
       if (idx < 0) return "";
-      const rest = t.slice(idx + String(label || "").length);
+      let rest = t.slice(idx + String(label || "").length);
+      rest = rest.replace(/^\s*[:*]+\s*/, "");
       const lines = rest.split(/\n/);
       const out = [];
       for (const line of lines) {
