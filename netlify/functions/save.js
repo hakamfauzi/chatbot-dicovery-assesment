@@ -36,7 +36,7 @@ export const handler = async (event) => {
     const clientEmail = (process.env.GOOGLE_CLIENT_EMAIL || process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || "").trim();
     const privateKeyRaw = (process.env.GOOGLE_PRIVATE_KEY || process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY || process.env.GOOGLE_PRIVATE_KEY_BASE64 || "").trim();
     const spreadsheetId = (process.env.GOOGLE_SHEETS_SPREADSHEET_ID || "").trim();
-    const range = (process.env.GOOGLE_SHEETS_RANGE || "hasil_llm!A:H").trim();
+    const range = (process.env.GOOGLE_SHEETS_RANGE || "hasil_llm!A:O").trim();
 
     if (!clientEmail || !privateKeyRaw || !spreadsheetId) {
       return {
@@ -71,6 +71,40 @@ export const handler = async (event) => {
 
     const sheets = google.sheets({ version: "v4", auth });
 
+    const toList = (x) => {
+      if (Array.isArray(x)) return x.filter(Boolean).join(" | ");
+      const s = String(x || "").trim();
+      return s;
+    };
+    const parseListFromRaw = (raw, label) => {
+      const t = String(raw || "");
+      const idx = t.toLowerCase().indexOf(String(label || "").toLowerCase());
+      if (idx < 0) return "";
+      const rest = t.slice(idx + String(label || "").length);
+      const lines = rest.split(/\n/);
+      const out = [];
+      for (const line of lines) {
+        const s = String(line || "").trim();
+        if (!s) break;
+        if (/^\d+\./.test(s)) out.push(s.replace(/^\d+\.\s*/, ""));
+        else if (/^[-•]/.test(s)) out.push(s.replace(/^[-•]\s*/, ""));
+        else break;
+      }
+      return out.join(" | ");
+    };
+    const parseSingleFromRaw = (raw, label) => {
+      const m = String(raw || "").match(new RegExp(`${label}[^:]*:\\s*(.+)`, "i"));
+      return m ? String(m[1]).trim() : "";
+    };
+
+    const rekom = String(a.rekomendasi_jalur || parseSingleFromRaw(a.rawText, "Rekomendasi jalur"));
+    const alasan = toList(a.alasan) || parseListFromRaw(a.rawText, "Alasan utama");
+    const risk = toList(a.risk) || parseListFromRaw(a.rawText, "Top risks");
+    const nextStep = toList(a.next_step) || parseListFromRaw(a.rawText, "Next steps");
+    const modelId = String(a.model_id || a.model || "");
+    const runId = String(a.run_id || "");
+    const owner = String(a.owner || "");
+
     const values = [
       [
         a.timestamp,
@@ -80,7 +114,14 @@ export const handler = async (event) => {
         Number(a.feasibility),
         Number(a.total),
         String(a.priority),
+        rekom,
+        alasan,
+        risk,
+        nextStep,
         String(a.rawText || ""),
+        modelId,
+        runId,
+        owner,
       ],
     ];
 

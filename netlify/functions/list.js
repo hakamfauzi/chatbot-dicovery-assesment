@@ -13,7 +13,7 @@ export const handler = async (event) => {
     const clientEmail = (process.env.GOOGLE_CLIENT_EMAIL || process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || "").trim();
     const privateKeyRaw = (process.env.GOOGLE_PRIVATE_KEY || process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY || process.env.GOOGLE_PRIVATE_KEY_BASE64 || "").trim();
     const spreadsheetId = (process.env.GOOGLE_SHEETS_SPREADSHEET_ID || "").trim();
-    let range = (process.env.GOOGLE_SHEETS_RANGE || "hasil_llm!A:H").trim();
+    let range = (process.env.GOOGLE_SHEETS_RANGE || "hasil_llm!A:O").trim();
     const qs = event.queryStringParameters || {};
     const tab = (qs.tab || "").trim().toLowerCase();
     const rangeParam = (qs.range || "").trim();
@@ -73,18 +73,23 @@ export const handler = async (event) => {
         }));
     } else {
       items = values.map((row) => {
-        const impact = row[3] != null ? parseFloat(String(row[3]).replace(",", ".")) : null;
-        const feasibility = row[4] != null ? parseFloat(String(row[4]).replace(",", ".")) : null;
-        const total = row[5] != null ? parseFloat(String(row[5]).replace(",", ".")) : null;
+        const num = (v) => (v != null ? parseFloat(String(v).replace(",", ".")) : null);
         return {
           timestamp: row[0] || null,
           use_case_name: row[1] || null,
           domain: row[2] || null,
-          impact,
-          feasibility,
-          total,
+          impact: num(row[3]),
+          feasibility: num(row[4]),
+          total: num(row[5]),
           priority: row[6] || null,
-          rawText: row[7] || null,
+          rekomendasi_jalur: row[7] || null,
+          alasan: row[8] || null,
+          risk: row[9] || null,
+          next_step: row[10] || null,
+          rawText: row[11] || null,
+          model_id: row[12] || null,
+          run_id: row[13] || null,
+          owner: row[14] || null,
         };
       });
     }

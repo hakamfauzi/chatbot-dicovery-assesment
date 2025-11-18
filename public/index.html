@@ -42,8 +42,6 @@
             <div class="control-row">
                 <button id="saveButton" disabled>Simpan ke Spreadsheet</button>
                 <button id="loadSheetButton" class="secondary">Muat dari Spreadsheet</button>
-                <button id="generateButton" class="secondary">Generate Document (PDF)</button>
-                <button id="generateDocxButton" class="secondary">Generate Document (DOCX)</button>
                 <span id="saveStatus" class="status"></span>
             </div>
             <div class="sheet-list">
@@ -75,8 +73,7 @@
         const loading = document.getElementById('loading');
         const saveButton = document.getElementById('saveButton');
         const loadSheetButton = document.getElementById('loadSheetButton');
-        const generateButton = document.getElementById('generateButton');
-        const generateDocxButton = document.getElementById('generateDocxButton');
+        
         const saveStatus = document.getElementById('saveStatus');
         const providerSelect = document.getElementById('providerSelect');
         const sheetCount = document.getElementById('sheetCount');
@@ -284,6 +281,27 @@
             const feasibility = parseNumber(feasStr);
             const total = parseNumber(totalStr);
 
+            const rekom = find(/Rekomendasi\s*jalur[^:]*:\s*([^\n]+)/i);
+            const parseList = (labelRe) => {
+                const m = t.match(labelRe);
+                if (!m) return [];
+                const start = m.index + m[0].length;
+                const rest = t.slice(start);
+                const lines = rest.split(/\n/);
+                const out = [];
+                for (const line of lines) {
+                    const s = String(line || '').trim();
+                    if (!s) break;
+                    if (/^\d+\./.test(s)) out.push(s.replace(/^\d+\.\s*/, ''));
+                    else if (/^[-•]/.test(s)) out.push(s.replace(/^[-•]\s*/, ''));
+                    else break;
+                }
+                return out;
+            };
+            const alasan = parseList(/Alasan\s*utama[^\n]*\n?/i);
+            const risks = parseList(/Top\s*risks[^\n]*\n?/i);
+            const nextSteps = parseList(/Next\s*steps[^\n]*\n?/i);
+
             if (useCase && domain && impact != null && feasibility != null && total != null && priority) {
                 return {
                     use_case_name: useCase,
@@ -292,6 +310,10 @@
                     feasibility,
                     total,
                     priority,
+                    rekomendasi_jalur: rekom || '',
+                    alasan,
+                    risk: risks,
+                    next_step: nextSteps,
                     timestamp: new Date().toISOString()
                 };
             }
@@ -388,9 +410,36 @@
                 const parsed = parseAssessmentFromText(reply);
                 if (parsed) {
                     parsed.rawText = reply;
+                    parsed.model_id = String(data.model || '');
+                    parsed.run_id = `${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
+                    const detectOwner = () => {
+                        for (const m of conversation) {
+                            const s = String(m?.text || '');
+                            const mr = s.match(/Owner\s*:\s*(.+)/i);
+                            if (mr) return mr[1].trim();
+                        }
+                        try { return String(window.localStorage.getItem('owner') || ''); } catch (_) { return ''; }
+                    };
+                    parsed.owner = detectOwner();
                     lastAssessment = parsed;
                     saveButton.disabled = false;
                     saveStatus.textContent = 'Siap disimpan ke Google Sheets.';
+                    try {
+                        const respSave = await fetchWithTimeout('/.netlify/functions/save', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ assessment: lastAssessment })
+                        }, 60000);
+                        const jsonSave = await respSave.json().catch(() => ({}));
+                        if (!respSave.ok) {
+                            const msg = jsonSave.error || jsonSave.message || 'Gagal menyimpan.';
+                            throw new Error(msg);
+                        }
+                        saveStatus.textContent = 'Tersimpan ✔';
+                        loadSheetButton.click();
+                    } catch (err) {
+                        saveStatus.textContent = `Gagal simpan: ${err.message}`;
+                    }
                 } else {
                     saveButton.disabled = true;
                     saveStatus.textContent = '';
@@ -531,40 +580,7 @@
             URL.revokeObjectURL(url);
         };
 
-        generateButton.addEventListener('click', async () => {
-            if (!lastAssessment) { alert('Hasil scoring belum tersedia.'); return; }
-            await generateAssessment(lastAssessment, true);
-        });
-
-        generateDocxButton.addEventListener('click', async () => {
-            if (!lastAssessment) { alert('Hasil scoring belum tersedia.'); return; }
-            try {
-                const basePayload = {
-                    include_qna: true,
-                    include_devguide: false,
-                    assessment: lastAssessment,
-                    conversation: conversation,
-                    project_profile: {}
-                };
-                const resp = await fetchWithTimeout('/.netlify/functions/generate', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ ...basePayload, format: 'docx' })
-                }, 60000);
-                const blob = await resp.blob();
-                if (!resp.ok) {
-                    const txt = await blob.text();
-                    throw new Error(txt || `HTTP ${resp.status}`);
-                }
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `Usecase_${String(lastAssessment?.use_case_name || '').replace(/[^a-z0-9]+/gi,'_')}.docx`;
-                a.click();
-                URL.revokeObjectURL(url);
-            } catch (err) {
-                alert(`Gagal generate DOCX: ${err.message}`);
-            }
-        });
+        
 
         
 
