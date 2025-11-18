@@ -72,7 +72,29 @@ export const handler = async (event) => {
           category: row[2] || null,
         }));
     } else {
-      items = values.map((row) => {
+      const isHeader = (r) => {
+        const c0 = String(r?.[0] || "").trim().toLowerCase();
+        const c1 = String(r?.[1] || "").trim().toLowerCase();
+        const c2 = String(r?.[2] || "").trim().toLowerCase();
+        const c6 = String(r?.[6] || "").trim().toLowerCase();
+        const c11 = String(r?.[11] || "").trim().toLowerCase();
+        const c12 = String(r?.[12] || "").trim().toLowerCase();
+        const c13 = String(r?.[13] || "").trim().toLowerCase();
+        const c14 = String(r?.[14] || "").trim().toLowerCase();
+        const anyHeader = [c0, c1, c2].includes("timestamp")
+          || c1 === "use_case_name"
+          || c2 === "domain"
+          || c6 === "priority"
+          || c11 === "rawtext"
+          || c12 === "model_id"
+          || c13 === "run_id"
+          || c14 === "owner";
+        const allLeading = (c0 === "timestamp" && c1 === "use_case_name" && c2 === "domain");
+        return anyHeader || allLeading;
+      };
+      items = values
+        .filter((row) => row && !isHeader(row))
+        .map((row) => {
         const num = (v) => (v != null ? parseFloat(String(v).replace(",", ".")) : null);
         return {
           timestamp: row[0] || null,

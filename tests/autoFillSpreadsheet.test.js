@@ -214,6 +214,21 @@ test('List handler membaca semua kolom sesuai header', async () => {
   expect(item.priority).toMatch(/Quick/i);
   expect(item.total).toBe(46);
 });
+
+test('List: baris header hasil_llm di-exclude (tidak ditampilkan)', async () => {
+  // Siapkan values: baris pertama adalah header, baris kedua data
+  getMock.mockResolvedValueOnce({ data: { values: [[
+    'timestamp','use_case_name','domain','impact','feasibility','total','priority','rekomendasi_jalur','alasan','risk','next_step','rawText','model_id','run_id','owner'
+  ], [
+    '2025-01-02T10:00:00.000Z','CaseX','Finance','12','34','46','Quick win','Mulai pilot','A1 | A2','R1 | R2','N1 | N2','RAW','gpt-oss','run_1','Owner X'
+  ]] } });
+  const { handler } = await importList();
+  const res = await handler({ httpMethod: 'GET', queryStringParameters: {} });
+  expect(res.statusCode).toBe(200);
+  const json = JSON.parse(res.body);
+  expect(json.items.length).toBe(1);
+  expect(json.items[0].use_case_name).toBe('CaseX');
+});
 test('List pertanyaan: header diabaikan dan baris data dibaca', async () => {
   // siapkan mock values untuk tab pertanyaan
   getMock.mockResolvedValueOnce({ data: { values: [ ['No','Pertanyaan','Kategori'], ['1','Apa tujuan?','Business'] ] } });
