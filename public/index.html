@@ -344,6 +344,17 @@
             addMessage('user', text);
             conversation.push({ role: 'user', text });
 
+            try {
+                if (/^\s*\/owner\s+/i.test(text)) {
+                    const ownerName = text.replace(/^\s*\/owner\s+/i, '').trim();
+                    if (ownerName) {
+                        window.localStorage.setItem('owner', ownerName);
+                        addMessage('assistant', `Owner diset: ${ownerName}`);
+                        return;
+                    }
+                }
+            } catch (_) {}
+
             loading.style.display = 'flex';
             sendButton.disabled = true;
 
@@ -422,18 +433,36 @@
                     : 'Model tidak mengembalikan teks. Coba /start atau ringkas narasi.';
                 conversation.push({ role: 'assistant', text: reply });
                 addMessage('assistant', reply); try { if (/\b\/devguide\b/i.test(text)) window.localStorage.setItem('devguide_text', reply); } catch (_) {}
+                try {
+                    if (/\b\/devguide\b/i.test(text)) {
+                        const payload = {
+                            mode: 'update',
+                            assessment: {
+                                timestamp: new Date().toISOString(),
+                                use_case_name: String(lastAssessment?.use_case_name || ''),
+                                domain: String(lastAssessment?.domain || ''),
+                                run_id: String(lastAssessment?.run_id || ''),
+                                owner: String(window.localStorage.getItem('owner') || lastAssessment?.owner || ''),
+                                rawText: '',
+                                devguide_text: reply,
+                                devguide_only: true,
+                                update: true
+                            }
+                        };
+                        await fetchWithTimeout('/.netlify/functions/save', {
+                            method: 'POST', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        }, 60000);
+                    }
+                } catch (_) {}
 
                 // Coba parsing hasil /score menjadi objek terstruktur untuk grafik & simpan
                 const parsed = parseAssessmentFromText(reply);
                 if (parsed) {
                     parsed.rawText = reply;
-                    // Tambahkan devguide ke assessment & tanam dalam rawText agar tersimpan ke Sheet
                     try {
                         const dg = buildDevguideFromConversation(conversation);
                         parsed.devguide_text = dg;
-                        if (dg && !/\*\*Developer\s+Guide\*\*/i.test(parsed.rawText || '')) {
-                            parsed.rawText = `${parsed.rawText}\n\n**Developer Guide**\n${dg}`;
-                        }
                     } catch (_) {}
                     parsed.model_id = String(data.model || '');
                     parsed.run_id = `${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
@@ -582,7 +611,7 @@
             const basePayload = {
                 include_qna: !!includeQna,
                 include_devguide: false,
-                devguide_text: buildDevguideFromConversation(conversation),
+                devguide_text: assessment?.devguide_text || buildDevguideFromConversation(conversation),
                 assessment,
                 conversation,
                 project_profile: {}
@@ -629,7 +658,7 @@
             const basePayload = {
                 include_qna: !!includeQna,
                 include_devguide: false,
-                devguide_text: buildDevguideFromConversation(conversation),
+                devguide_text: assessment?.devguide_text || buildDevguideFromConversation(conversation),
                 assessment,
                 conversation,
                 project_profile: {}
@@ -681,7 +710,8 @@
                         feasibility: parseNumber(it.feasibility),
                         total: parseNumber(it.total),
                         priority: it.priority || '',
-                        rawText: it.rawText || ''
+                        rawText: it.rawText || '',
+                        devguide_text: it.devguideText || ''
                     };
                     const s0 = String(a.timestamp || '').trim().toLowerCase();
                     const s1 = String(a.use_case_name || '').trim().toLowerCase();
@@ -737,7 +767,8 @@
                                 feasibility: Number(x.feasibility) || 0,
                                 total: Number(x.total) || 0,
                                 priority: x.priority || '',
-                                rawText: x.rawText || ''
+                                rawText: x.rawText || '',
+                                devguide_text: x.devguide_text || ''
                             };
                             await generateAssessment(a, false);
                         });
@@ -756,7 +787,8 @@
                                 feasibility: Number(x.feasibility) || 0,
                                 total: Number(x.total) || 0,
                                 priority: x.priority || '',
-                                rawText: x.rawText || ''
+                                rawText: x.rawText || '',
+                                devguide_text: x.devguide_text || ''
                             };
                             await generateDocx(a, false);
                         });

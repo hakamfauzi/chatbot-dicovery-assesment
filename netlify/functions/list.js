@@ -13,7 +13,7 @@ export const handler = async (event) => {
     const clientEmail = (process.env.GOOGLE_CLIENT_EMAIL || process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || "").trim();
     const privateKeyRaw = (process.env.GOOGLE_PRIVATE_KEY || process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY || process.env.GOOGLE_PRIVATE_KEY_BASE64 || "").trim();
     const spreadsheetId = (process.env.GOOGLE_SHEETS_SPREADSHEET_ID || "").trim();
-    let range = (process.env.GOOGLE_SHEETS_RANGE || "hasil_llm!A:P").trim();
+    let range = (process.env.GOOGLE_SHEETS_RANGE || "hasil_llm!A:Q").trim();
     const qs = event.queryStringParameters || {};
     const tab = (qs.tab || "").trim().toLowerCase();
     const rangeParam = (qs.range || "").trim();
@@ -77,11 +77,12 @@ export const handler = async (event) => {
         const c1 = String(r?.[1] || "").trim().toLowerCase();
         const c2 = String(r?.[2] || "").trim().toLowerCase();
         const c6 = String(r?.[6] || "").trim().toLowerCase();
-        const c11 = String(r?.[11] || "").trim().toLowerCase(); // project_overview
-        const c12 = String(r?.[12] || "").trim().toLowerCase(); // rawText
-        const c13 = String(r?.[13] || "").trim().toLowerCase(); // model_id
-        const c14 = String(r?.[14] || "").trim().toLowerCase(); // run_id
-        const c15 = String(r?.[15] || "").trim().toLowerCase(); // owner
+        const c11 = String(r?.[11] || "").trim().toLowerCase();
+        const c12 = String(r?.[12] || "").trim().toLowerCase();
+        const c13 = String(r?.[13] || "").trim().toLowerCase();
+        const c14 = String(r?.[14] || "").trim().toLowerCase();
+        const c15 = String(r?.[15] || "").trim().toLowerCase();
+        const c16 = String(r?.[16] || "").trim().toLowerCase();
         const anyHeader = [c0, c1, c2].includes("timestamp")
           || c1 === "use_case_name"
           || c2 === "domain"
@@ -90,7 +91,8 @@ export const handler = async (event) => {
           || c12 === "rawtext"
           || c13 === "model_id"
           || c14 === "run_id"
-          || c15 === "owner";
+          || c15 === "owner"
+          || c16 === "devguidetext" || c16 === "devguide_text" || c16 === "deguidetext";
         const allLeading = (c0 === "timestamp" && c1 === "use_case_name" && c2 === "domain");
         return anyHeader || allLeading;
       };
@@ -115,6 +117,7 @@ export const handler = async (event) => {
             model_id: row[13] || null,
             run_id: row[14] || null,
             owner: row[15] || null,
+            devguideText: row[16] || null,
           };
       });
     }

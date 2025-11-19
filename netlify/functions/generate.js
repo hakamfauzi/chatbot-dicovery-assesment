@@ -26,8 +26,14 @@ export const handler = async (event) => {
     const rawText = String(assessment.rawText || body.rawText || "");
     const conversation = Array.isArray(body.conversation) ? body.conversation : [];
     const devguideText = (() => {
-      const t = String(body.devguide_text || "");
-      if (t.trim()) return t;
+      const pick = (...vals) => {
+        for (const v of vals) { const s = String(v || "").trim(); if (s) return s; }
+        return "";
+      };
+      const fromBody = pick(body.devguide_text, body.devguideText, body.devguidetext, body.deguidetext);
+      if (fromBody) return fromBody;
+      const fromAssessment = pick(assessment.devguide_text, assessment.devguideText, assessment.devguidetext, assessment.deguidetext);
+      if (fromAssessment) return fromAssessment;
       const conv = Array.isArray(conversation) ? conversation : [];
       if (conv.length) {
         for (let i = conv.length - 1; i >= 0; i--) {

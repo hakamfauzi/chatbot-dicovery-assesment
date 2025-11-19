@@ -278,7 +278,7 @@ Catatan pengisian “Domain:”:
 6) **Menu Aksi Lanjutan**
 - Tawarkan opsi: **/revise**, **/weights**, **/override**, **/export json**, **/devguide**.
 
-7) **Developer Guide (Ringkas)**
+7) **Developer Guide (Detail)**
 - Sertakan ringkasan panduan teknis (stack, integrasi, data, keamanan) yang relevan dengan skor & domain.
 - Jika pengguna ingin detail tambahan, arahkan ke **/devguide**.
 

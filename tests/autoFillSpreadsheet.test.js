@@ -7,17 +7,18 @@
 import { jest } from '@jest/globals';
 
 // Mock googleapis (auth JWT & sheets client)
-const appendMock = jest.fn(async (req) => ({ data: { updates: { updatedRange: req.range || 'hasil_llm!A:O' } } }));
+const appendMock = jest.fn(async (req) => ({ data: { updates: { updatedRange: req.range || 'hasil_llm!A:Q' } } }));
+const updateMock = jest.fn(async (req) => ({ data: { updatedRange: req.range || 'hasil_llm!Q2' } }));
 const getMock = jest.fn(async () => ({ data: { values: [[
-  'timestamp','use_case_name','domain','impact','feasibility','total','priority','rekomendasi_jalur','alasan','risk','next_step','project_overview','rawText','model_id','run_id','owner'
+  'timestamp','use_case_name','domain','impact','feasibility','total','priority','rekomendasi_jalur','alasan','risk','next_step','project_overview','rawText','model_id','run_id','owner','devguideText'
 ], [
-  '2025-01-02T10:00:00.000Z','CaseX','Finance','12','34','46','Quick win','Mulai pilot','A1 | A2','R1 | R2','N1 | N2','Gambaran proyek singkat','RAW','gpt-oss','run_1','Owner X'
+  '2025-01-02T10:00:00.000Z','CaseX','Finance','12','34','46','Quick win','Mulai pilot','A1 | A2','R1 | R2','N1 | N2','Gambaran proyek singkat','RAW','gpt-oss','run_1','Owner X','DG text'
 ]] } }));
 
 jest.unstable_mockModule('googleapis', () => ({
   google: {
     auth: { JWT: class JWT { constructor() {} } },
-    sheets: () => ({ spreadsheets: { values: { append: appendMock, get: getMock } } })
+    sheets: () => ({ spreadsheets: { values: { append: appendMock, get: getMock, update: updateMock } } })
   }
 }));
 
@@ -28,7 +29,7 @@ const baseEnv = {
   GOOGLE_CLIENT_EMAIL: 'svc@test.example',
   GOOGLE_PRIVATE_KEY: '"-----BEGIN PRIVATE KEY-----\nABCDEF\n-----END PRIVATE KEY-----"',
   GOOGLE_SHEETS_SPREADSHEET_ID: 'sheet_123',
-  GOOGLE_SHEETS_RANGE: 'hasil_llm!A:P'
+  GOOGLE_SHEETS_RANGE: 'hasil_llm!A:Q'
 };
 
 const makeEvent = (body) => ({ httpMethod: 'POST', body: JSON.stringify(body) });
@@ -50,7 +51,7 @@ afterEach(() => {
   delete process.env.GOOGLE_SHEETS_RANGE;
 });
 
-test('Input data valid ditulis ke kolom A:P secara lengkap', async () => {
+test('Input data valid ditulis ke kolom A:Q secara lengkap', async () => {
   const { handler } = await importSave();
   const assessment = {
     timestamp: '2025-01-02T10:00:00.000Z',
@@ -74,8 +75,8 @@ test('Input data valid ditulis ke kolom A:P secara lengkap', async () => {
   expect(appendMock).toHaveBeenCalledTimes(1);
   const call = appendMock.mock.calls[0][0];
   expect(call.valueInputOption).toBe('USER_ENTERED');
-  expect(call.requestBody.values[0]).toHaveLength(16);
-  expect(call.range).toBe('hasil_llm!A:P');
+  expect(call.requestBody.values[0]).toHaveLength(17);
+  expect(call.range).toBe('hasil_llm!A:Q');
 });
 
 test('Mendukung format data berbeda: teks, angka, tanggal (string ISO)', async () => {
@@ -197,6 +198,77 @@ test('Validasi integritas & format sel: order kolom dan opsi append benar', asyn
   expect(req.insertDataOption).toBe('INSERT_ROWS');
 });
 
+test('Save: devguideText ditulis dari assessment.devguide_text', async () => {
+  const { handler } = await importSave();
+  const assessment = { use_case_name: 'X', domain: 'Y', impact: 1, feasibility: 2, total: 3, priority: 'p', timestamp: 't', rawText: '', devguide_text: 'Langkah implementasi: A, B, C' };
+  const res = await handler(makeEvent({ assessment }));
+  expect(res.statusCode).toBe(200);
+  const row = appendMock.mock.calls[appendMock.mock.calls.length - 1][0].requestBody.values[0];
+  expect(String(row[16] || '')).toMatch(/Langkah implementasi/i);
+});
+
+test('Save: devguideText fallback dari rawText (blok **Developer Guide**)', async () => {
+  const { handler } = await importSave();
+  const assessment = { use_case_name: 'X', domain: 'Y', impact: 1, feasibility: 2, total: 3, priority: 'p', timestamp: 't', rawText: ['**Developer Guide**','DG content line'].join('\n') };
+  const res = await handler(makeEvent({ assessment }));
+  expect(res.statusCode).toBe(200);
+  const row = appendMock.mock.calls[appendMock.mock.calls.length - 1][0].requestBody.values[0];
+  expect(String(row[16] || '')).toMatch(/DG content/i);
+});
+
+test('Save: mode devguide_only menulis kolom Q meski kolom lain kosong', async () => {
+  const { handler } = await importSave();
+  const payload = {
+    assessment: {
+      timestamp: 't',
+      use_case_name: '',
+      domain: '',
+      rawText: '',
+      devguide_text: 'DG only',
+      devguide_only: true
+    },
+    devguide_only: true
+  };
+  const res = await handler(makeEvent(payload));
+  expect(res.statusCode).toBe(200);
+  const row = appendMock.mock.calls[appendMock.mock.calls.length - 1][0].requestBody.values[0];
+  expect(row[0]).toBe('t');
+  expect(String(row[16] || '')).toMatch(/DG only/i);
+});
+
+test('Save: mode update menimpa kolom Q berdasarkan run_id', async () => {
+  getMock.mockResolvedValueOnce({ data: { values: [[
+    'timestamp','use_case_name','domain','impact','feasibility','total','priority','rekomendasi_jalur','alasan','risk','next_step','project_overview','rawText','model_id','run_id','owner','devguideText'
+  ], [
+    't0','X','Y','1','2','3','p','','','','','','','m','abc','o','old DG'
+  ]] } });
+  const { handler } = await importSave();
+  const res = await handler(makeEvent({ mode: 'update', assessment: { timestamp: 't', use_case_name: 'X', domain: 'Y', run_id: 'abc', devguide_text: 'DG new' } }));
+  expect(res.statusCode).toBe(200);
+  expect(updateMock).toHaveBeenCalledTimes(1);
+  const call = updateMock.mock.calls[0][0];
+  expect(call.range).toMatch(/!Q2$/);
+  expect(call.requestBody.values[0][0]).toMatch(/DG new/i);
+});
+
+test('Save: devguide diterima dari variasi kunci camelCase (devguideText)', async () => {
+  const { handler } = await importSave();
+  const assessment = { use_case_name: 'X', domain: 'Y', impact: 1, feasibility: 2, total: 3, priority: 'p', timestamp: 't', rawText: '', devguideText: 'Isi DG via camelCase' };
+  const res = await handler(makeEvent({ assessment }));
+  expect(res.statusCode).toBe(200);
+  const row = appendMock.mock.calls[appendMock.mock.calls.length - 1][0].requestBody.values[0];
+  expect(String(row[16] || '')).toMatch(/Isi DG/i);
+});
+
+test('Save: devguide fallback single-line label "Developer guide: ..."', async () => {
+  const { handler } = await importSave();
+  const assessment = { use_case_name: 'X', domain: 'Y', impact: 1, feasibility: 2, total: 3, priority: 'p', timestamp: 't', rawText: 'Developer guide: Baris ringkas devguide' };
+  const res = await handler(makeEvent({ assessment }));
+  expect(res.statusCode).toBe(200);
+  const row = appendMock.mock.calls[appendMock.mock.calls.length - 1][0].requestBody.values[0];
+  expect(String(row[16] || '')).toMatch(/Baris ringkas/i);
+});
+
 test('Performa batch: 25 operasi append terproses', async () => {
   const { handler } = await importSave();
   const payload = (i) => ({ assessment: { use_case_name: 'X'+i, domain: 'Y', impact: 1, feasibility: 2, total: 3, priority: 'p', timestamp: 't' } });
@@ -231,6 +303,11 @@ test('Save handler: run_id otomatis dan owner diparse dari rawText saat tidak di
 
 // Tambahan: verifikasi pembacaan list untuk konsistensi format
 test('List handler membaca semua kolom sesuai header (termasuk project_overview)', async () => {
+  getMock.mockResolvedValueOnce({ data: { values: [[
+    'timestamp','use_case_name','domain','impact','feasibility','total','priority','rekomendasi_jalur','alasan','risk','next_step','project_overview','rawText','model_id','run_id','owner','devguideText'
+  ], [
+    '2025-01-02T10:00:00.000Z','CaseX','Finance','12','34','46','Quick win','Mulai pilot','A1 | A2','R1 | R2','N1 | N2','Gambaran proyek singkat','RAW','gpt-oss','run_1','Owner X','DG text'
+  ]] } });
   const { handler } = await importList();
   const res = await handler({ httpMethod: 'GET', queryStringParameters: {} });
   expect(res.statusCode).toBe(200);
@@ -244,9 +321,9 @@ test('List handler membaca semua kolom sesuai header (termasuk project_overview)
 test('List: baris header hasil_llm di-exclude (tidak ditampilkan)', async () => {
   // Siapkan values: baris pertama adalah header, baris kedua data
   getMock.mockResolvedValueOnce({ data: { values: [[
-    'timestamp','use_case_name','domain','impact','feasibility','total','priority','rekomendasi_jalur','alasan','risk','next_step','project_overview','rawText','model_id','run_id','owner'
+    'timestamp','use_case_name','domain','impact','feasibility','total','priority','rekomendasi_jalur','alasan','risk','next_step','project_overview','rawText','model_id','run_id','owner','devguideText'
   ], [
-    '2025-01-02T10:00:00.000Z','CaseX','Finance','12','34','46','Quick win','Mulai pilot','A1 | A2','R1 | R2','N1 | N2','Overview','RAW','gpt-oss','run_1','Owner X'
+    '2025-01-02T10:00:00.000Z','CaseX','Finance','12','34','46','Quick win','Mulai pilot','A1 | A2','R1 | R2','N1 | N2','Overview','RAW','gpt-oss','run_1','Owner X','DG text'
   ]] } });
   const { handler } = await importList();
   const res = await handler({ httpMethod: 'GET', queryStringParameters: {} });
