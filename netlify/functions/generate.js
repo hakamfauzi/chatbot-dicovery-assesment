@@ -20,11 +20,53 @@ export const handler = async (event) => {
 
     const format = String(body.format || "pdf").toLowerCase();
     const includeQna = !!body.include_qna;
-    const includeDevguide = !!body.include_devguide;
+    const includeDevguide = format === "pdf" ? true : !!body.include_devguide;
     const profile = body.project_profile || {};
     const assessment = body.assessment || {};
     const rawText = String(assessment.rawText || body.rawText || "");
     const conversation = Array.isArray(body.conversation) ? body.conversation : [];
+    const devguideText = (() => {
+      const t = String(body.devguide_text || "");
+      if (t.trim()) return t;
+      const conv = Array.isArray(conversation) ? conversation : [];
+      if (conv.length) {
+        for (let i = conv.length - 1; i >= 0; i--) {
+          const m = conv[i];
+          const s = String(m?.text || "");
+          if (m.role === "user" && /\b\/devguide\b/i.test(s)) {
+            for (let j = i + 1; j < conv.length; j++) {
+              const a = conv[j];
+              if (a.role === "assistant") {
+                const r = String(a?.text || "");
+                if (r.trim()) return r;
+                break;
+              }
+            }
+            break;
+          }
+        }
+        const aa = [...conv].reverse().find(x => x.role === "assistant" && /developer guide/i.test(String(x?.text || "")));
+        if (aa) return String(aa.text || "");
+      }
+      const fromRaw = (() => {
+        const t = String(rawText || "");
+        const idx = t.toLowerCase().indexOf("**developer guide**".toLowerCase());
+        if (idx < 0) return "";
+        const rest = t.slice(idx + "**developer guide**".length);
+        const lines = rest.split(/\n/);
+        const out = [];
+        const boundary = /^(\*\*|Use\s*case|Domain|Impact|Feasibility|Total|Priority|Project\s*overview|Rekomendasi\s*jalur|Alasan\s*utama|Top\s*risks|Next\s*steps)/i;
+        for (const line of lines) {
+          const s = String(line || "").trim();
+          if (!s) break;
+          if (boundary.test(s)) break;
+          out.push(s);
+        }
+        return out.join("\n");
+      })();
+      if (fromRaw.trim()) return fromRaw;
+      return "";
+    })();
 
     const useCase = String(assessment.use_case_name || profile.name || "").trim() || "Tidak disebut";
     const domain = String(assessment.domain || profile.domain || "").trim() || "Tidak disebut";
@@ -176,8 +218,64 @@ export const handler = async (event) => {
         ul { margin: 8px 0 0 18px; }
         .small { font-size: 11px; color: #475569; }
         .footer { position: fixed; bottom: 0; width: 100%; text-align: center; font-size: 10px; color: #64748b; }
+        .md h1, .md h2, .md h3 { margin: 6px 0; color: #0d47a1; }
+        .md p { margin: 6px 0; line-height: 1.5; }
+        .md ul, .md ol { margin: 6px 0 6px 18px; }
+        .md code { background: #eef2ff; padding: 1px 3px; border-radius: 3px; }
+        .md pre { background: #f8fafc; padding: 10px; border: 1px solid #e2e8f0; overflow: auto; }
+        .md table { width: 100%; border-collapse: collapse; }
+        .md table th, .md table td { border: 1px solid #cbd5e1; padding: 6px; font-size: 11px; }
+        .md table th { background: #eef2ff; text-align: left; }
       </style>
     `;
+
+    const mdToHtml = (text) => {
+      const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      const inline = (s) => esc(s).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/\*(.+?)\*/g, "<i>$1</i>").replace(/`([^`]+?)`/g, "<code>$1</code>");
+      const lines = String(text || "").split(/\r?\n/);
+      let out = [], inUl = false, inOl = false, inCode = false, inTable = false, tableRows = [];
+      const isTableLine = (t) => /^\s*\|.*\|\s*$/.test(String(t || ""));
+      const isSepLine = (t) => /^\s*\|(?:\s*:?-+:?\s*\|)+\s*$/.test(String(t || ""));
+      const flushLists = () => { if (inUl) { out.push("</ul>"); inUl = false; } if (inOl) { out.push("</ol>"); inOl = false; } };
+      const flushTable = () => {
+        if (!tableRows.length) { inTable = false; return; }
+        const header = tableRows.length > 1 && isSepLine(tableRows[1]) ? tableRows[0] : null;
+        const body = header ? tableRows.slice(2) : tableRows.slice(0);
+        const parseCells = (line) => String(line || "").trim().replace(/^\|+|\|+$/g, "").split("|").map((c) => inline(String(c || "").trim()));
+        let html = `<table class="md-table">`;
+        if (header) {
+          const ths = parseCells(header).map((c) => `<th>${c}</th>`).join("");
+          html += `<thead><tr>${ths}</tr></thead>`;
+        }
+        html += `<tbody>`;
+        html += body.filter((row) => !isSepLine(row)).map((row) => {
+          const tds = parseCells(row).map((c) => `<td>${c}</td>`).join("");
+          return `<tr>${tds}</tr>`;
+        }).join("");
+        html += `</tbody></table>`;
+        out.push(html);
+        tableRows = []; inTable = false;
+      };
+      for (let i = 0; i < lines.length; i++) {
+        const raw = lines[i];
+        const t = String(raw || "");
+        const trim = t.trim();
+        if (/^```/.test(trim)) { if (!inCode) { inCode = true; out.push("<pre><code>"); } else { inCode = false; out.push("</code></pre>"); } continue; }
+        if (inCode) { out.push(esc(t)); continue; }
+        if (isTableLine(t)) { if (!inTable) { flushLists(); inTable = true; tableRows = []; } tableRows.push(t); continue; }
+        if (inTable && !isTableLine(t)) { flushTable(); }
+        if (/^\s*[-•]\s+/.test(t)) { if (!inUl) { if (inOl) { out.push("</ol>"); inOl = false; } inUl = true; out.push("<ul>"); } out.push("<li>" + inline(t.replace(/^\s*[-•]\s+/, "")) + "</li>"); continue; }
+        if (/^\s*\d+\.\s+/.test(t)) { if (!inOl) { if (inUl) { out.push("</ul>"); inUl = false; } inOl = true; out.push("<ol>"); } out.push("<li>" + inline(t.replace(/^\s*\d+\.\s+/, "")) + "</li>"); continue; }
+        flushLists();
+        const h = trim.match(/^#{1,4}\s+(.*)$/);
+        if (h) { const lvl = (trim.match(/^#{1,4}/)[0].length); out.push(`<h${lvl}>${inline(h[1])}</h${lvl}>`); continue; }
+        if (/^\s*---\s*$/.test(trim)) { out.push("<hr/>"); continue; }
+        if (trim) out.push("<p>" + inline(trim) + "</p>");
+      }
+      flushLists();
+      if (inTable) flushTable();
+      return out.join("");
+    };
 
     const html = `
       <!DOCTYPE html>
@@ -245,8 +343,7 @@ export const handler = async (event) => {
 
         ${includeQna ? `<div class="content"><div class="section-title">Lampiran QnA</div>${qna.length ? `<ol>${qna.map(x=>`<li><div><b>Q${x.number}</b>: ${x.question}</div><div>Jawaban: ${x.answer || ""}</div></li>`).join("")}</ol>` : `<div class="small">Tidak ada.</div>`}</div>` : ""}
 
-        ${includeDevguide && body.devguide_text ? `<div class="content"><div class="section-title">Developer Guide</div><div>${String(body.devguide_text || "").replace(/</g, "&lt;")}</div></div>` : ""}
-
+        ${includeDevguide && devguideText ? `<div class="content"><div class="section-title">Developer Guide</div><div class="md">${mdToHtml(devguideText)}</div></div>` : ""}
         <div class="footer">Dokumen internal</div>
       </body>
       </html>

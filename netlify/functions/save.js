@@ -36,7 +36,7 @@ export const handler = async (event) => {
     const clientEmail = (process.env.GOOGLE_CLIENT_EMAIL || process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || "").trim();
     const privateKeyRaw = (process.env.GOOGLE_PRIVATE_KEY || process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY || process.env.GOOGLE_PRIVATE_KEY_BASE64 || "").trim();
     const spreadsheetId = (process.env.GOOGLE_SHEETS_SPREADSHEET_ID || "").trim();
-    const range = (process.env.GOOGLE_SHEETS_RANGE || "hasil_llm!A:O").trim();
+    const range = (process.env.GOOGLE_SHEETS_RANGE || "hasil_llm!A:P").trim();
 
     if (!clientEmail || !privateKeyRaw || !spreadsheetId) {
       return {
@@ -84,12 +84,14 @@ export const handler = async (event) => {
       rest = rest.replace(/^\s*[:*]+\s*/, "");
       const lines = rest.split(/\n/);
       const out = [];
+      const boundary = /^(Use\s*case|Domain|Impact|Feasibility|Total|Priority|Project\s*overview|Rekomendasi\s*jalur|Alasan\s*utama|Top\s*risks|Next\s*steps)\b/i;
       for (const line of lines) {
         const s = String(line || "").trim();
         if (!s) break;
+        if (boundary.test(s)) break;
         if (/^\d+\./.test(s)) out.push(s.replace(/^\d+\.\s*/, ""));
         else if (/^[-•]/.test(s)) out.push(s.replace(/^[-•]\s*/, ""));
-        else break;
+        else out.push(s);
       }
       return out.join(" | ");
     };
@@ -99,12 +101,21 @@ export const handler = async (event) => {
     };
 
     const rekom = String(a.rekomendasi_jalur || parseSingleFromRaw(a.rawText, "Rekomendasi jalur"));
+    const projectOverview = String(a.project_overview || parseSingleFromRaw(a.rawText, "Project overview"));
     const alasan = toList(a.alasan) || parseListFromRaw(a.rawText, "Alasan utama");
     const risk = toList(a.risk) || parseListFromRaw(a.rawText, "Top risks");
     const nextStep = toList(a.next_step) || parseListFromRaw(a.rawText, "Next steps");
     const modelId = String(a.model_id || a.model || "");
-    const runId = String(a.run_id || "");
-    const owner = String(a.owner || "");
+    const runId = String(a.run_id || `${Date.now()}_${Math.random().toString(36).slice(2,8)}`);
+    const owner = String(a.owner || parseSingleFromRaw(a.rawText, "Owner") || (process.env.DEFAULT_OWNER || ""));
+
+    const devguideText = String(a.devguide_text || "").trim();
+    const rawBase = String(a.rawText || "");
+    const rawTextWithDev = (() => {
+      if (!devguideText) return rawBase;
+      if (/\*\*Developer\s+Guide\*\*/i.test(rawBase)) return rawBase; // sudah tertanam
+      return `${rawBase}\n\n**Developer Guide**\n${devguideText}`;
+    })();
 
     const values = [
       [
@@ -119,7 +130,8 @@ export const handler = async (event) => {
         alasan,
         risk,
         nextStep,
-        String(a.rawText || ""),
+        projectOverview,
+        rawTextWithDev,
         modelId,
         runId,
         owner,

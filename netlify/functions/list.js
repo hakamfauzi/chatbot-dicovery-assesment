@@ -13,7 +13,7 @@ export const handler = async (event) => {
     const clientEmail = (process.env.GOOGLE_CLIENT_EMAIL || process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || "").trim();
     const privateKeyRaw = (process.env.GOOGLE_PRIVATE_KEY || process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY || process.env.GOOGLE_PRIVATE_KEY_BASE64 || "").trim();
     const spreadsheetId = (process.env.GOOGLE_SHEETS_SPREADSHEET_ID || "").trim();
-    let range = (process.env.GOOGLE_SHEETS_RANGE || "hasil_llm!A:O").trim();
+    let range = (process.env.GOOGLE_SHEETS_RANGE || "hasil_llm!A:P").trim();
     const qs = event.queryStringParameters || {};
     const tab = (qs.tab || "").trim().toLowerCase();
     const rangeParam = (qs.range || "").trim();
@@ -77,42 +77,45 @@ export const handler = async (event) => {
         const c1 = String(r?.[1] || "").trim().toLowerCase();
         const c2 = String(r?.[2] || "").trim().toLowerCase();
         const c6 = String(r?.[6] || "").trim().toLowerCase();
-        const c11 = String(r?.[11] || "").trim().toLowerCase();
-        const c12 = String(r?.[12] || "").trim().toLowerCase();
-        const c13 = String(r?.[13] || "").trim().toLowerCase();
-        const c14 = String(r?.[14] || "").trim().toLowerCase();
+        const c11 = String(r?.[11] || "").trim().toLowerCase(); // project_overview
+        const c12 = String(r?.[12] || "").trim().toLowerCase(); // rawText
+        const c13 = String(r?.[13] || "").trim().toLowerCase(); // model_id
+        const c14 = String(r?.[14] || "").trim().toLowerCase(); // run_id
+        const c15 = String(r?.[15] || "").trim().toLowerCase(); // owner
         const anyHeader = [c0, c1, c2].includes("timestamp")
           || c1 === "use_case_name"
           || c2 === "domain"
           || c6 === "priority"
-          || c11 === "rawtext"
-          || c12 === "model_id"
-          || c13 === "run_id"
-          || c14 === "owner";
+          || c11 === "project_overview"
+          || c12 === "rawtext"
+          || c13 === "model_id"
+          || c14 === "run_id"
+          || c15 === "owner";
         const allLeading = (c0 === "timestamp" && c1 === "use_case_name" && c2 === "domain");
         return anyHeader || allLeading;
       };
       items = values
         .filter((row) => row && !isHeader(row))
         .map((row) => {
-        const num = (v) => (v != null ? parseFloat(String(v).replace(",", ".")) : null);
-        return {
-          timestamp: row[0] || null,
-          use_case_name: row[1] || null,
-          domain: row[2] || null,
-          impact: num(row[3]),
-          feasibility: num(row[4]),
-          total: num(row[5]),
-          priority: row[6] || null,
-          rekomendasi_jalur: row[7] || null,
-          alasan: row[8] || null,
-          risk: row[9] || null,
-          next_step: row[10] || null,
-          rawText: row[11] || null,
-          model_id: row[12] || null,
-          run_id: row[13] || null,
-          owner: row[14] || null,
-        };
+          const num = (v) => (v != null ? parseFloat(String(v).replace(",", ".")) : null);
+          return {
+            timestamp: row[0] || null,
+            use_case_name: row[1] || null,
+            domain: row[2] || null,
+            impact: num(row[3]),
+            feasibility: num(row[4]),
+            total: num(row[5]),
+            priority: row[6] || null,
+            rekomendasi_jalur: row[7] || null,
+            alasan: row[8] || null,
+            risk: row[9] || null,
+            next_step: row[10] || null,
+            project_overview: row[11] || null,
+            rawText: row[12] || null,
+            model_id: row[13] || null,
+            run_id: row[14] || null,
+            owner: row[15] || null,
+          };
       });
     }
 

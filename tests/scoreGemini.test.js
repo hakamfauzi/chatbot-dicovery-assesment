@@ -42,6 +42,26 @@ test('score.js: sukses dengan payload messages', async () => {
   expect(json.model).toMatch(/gemini/i);
 });
 
+test('score.js: sukses dengan payload narrative', async () => {
+  global.fetch = jest.fn(async (url, opts) => {
+    const u = String(url || '');
+    if (u.includes('/v1/models?key=')) {
+      return makeResp(200, { models: [{ name: 'models/gemini-1.5-flash' }] });
+    }
+    if (u.includes(':generateContent?key=')) {
+      return makeResp(200, {
+        candidates: [ { content: { parts: [ { text: 'Scored: Impact 70, Feasibility 50\nUse case: RPA' } ] } } ]
+      });
+    }
+    return makeResp(404, 'not found');
+  });
+  const mod = await import('../netlify/functions/score.js');
+  const res = await mod.handler({ httpMethod: 'POST', body: JSON.stringify({ narrative: 'Narasi panjang tentang RPA' }) });
+  expect(res.statusCode).toBe(200);
+  const json = JSON.parse(res.body);
+  expect(json.message).toMatch(/Scored|Use case/i);
+});
+
 test('score.js: method bukan POST -> 405', async () => {
   const mod = await import('../netlify/functions/score.js');
   const res = await mod.handler({ httpMethod: 'GET' });

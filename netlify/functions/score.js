@@ -45,7 +45,7 @@ const callGenerativeV1 = async (model, contents) => {
         contents,
         generationConfig: {
             maxOutputTokens: Number(process.env.MAX_OUTPUT_TOKENS || 768),
-            temperature: Number(process.env.GENERATION_TEMPERATURE || 0.2),
+            temperature: Number(process.env.GENERATION_TEMPERATURE || 0.1),
         },
     };
 
@@ -155,6 +155,13 @@ export const handler = async (event) => {
         if (Array.isArray(body.messages)) {
             // Mode chatbot: gunakan riwayat percakapan dari frontend
             contents = normalizeMessagesToContents(body.messages);
+            const lastUser = Array.isArray(body.messages) ? [...body.messages].reverse().find(m => m.role === 'user') : null;
+            const s = String(lastUser?.text || '');
+            const looksNarrative = (s.length > 200) || /Use\s*case\s*:|Domain\s*:|Impact\s*:|Feasibility\s*:|Priority\s*:/i.test(s);
+            if (looksNarrative || String(body.flow || '').toLowerCase() === 'narrative') {
+                const directiveNarr = 'Mode narasi: pahami konteks narasi panjang pengguna, infer domain, hitung skor sesuai rubrik & bobot, terapkan guardrails, lalu keluarkan Format Hasil lengkap (label persis). Jika data kurang, set Confidence: Low dan minta 1–2 klarifikasi ringkas.';
+                contents.unshift({ role: 'user', parts: [{ text: directiveNarr }] });
+            }
         } else if (body.narrative) {
             const userNarrative = String(body.narrative);
             contents = normalizeMessagesToContents([{ role: 'user', text: userNarrative }]);
@@ -175,6 +182,20 @@ export const handler = async (event) => {
         if (wantsDevguide && DEVGUIDE_PROMPT) preludeTexts.push(DEVGUIDE_PROMPT);
         const prelude = preludeTexts.map((t) => ({ role: 'user', parts: [{ text: t }] }));
         contents = [...prelude, ...contents];
+        // Dorong klarifikasi owner di awal sesi jika belum disebut
+        try {
+            const hasOwner = contents.some(c => /Owner\s*:\s*/i.test(String(c?.parts?.[0]?.text || '')));
+            const lastUser = [...(body.messages || [])].reverse().find(m => m.role === 'user');
+            const uText = String(lastUser?.text || '');
+            if (String(body.flow || '').toLowerCase() === 'qna' && !hasOwner && !/Owner\s*:\s*/i.test(uText)) {
+                const askOwner = 'Q0 — Owner: Siapa owner/penanggung jawab use case ini? (nama unit/tim/produk). Tolong jawab dengan format: "Owner: <nama>"';
+                contents.push({ role: 'user', parts: [{ text: askOwner }] });
+            }
+        } catch {}
+        if (body.narrative) {
+            const directiveNarr = 'Mode narasi: pahami konteks narasi panjang pengguna, infer domain, hitung skor sesuai rubrik & bobot, terapkan guardrails, lalu keluarkan Format Hasil lengkap sesuai spesifikasi (label persis). Jika data kurang, set Confidence: Low dan minta 1–2 klarifikasi ringkas.';
+            contents.unshift({ role: 'user', parts: [{ text: directiveNarr }] });
+        }
         if (body.modules && body.modules.qna) {
             const step = Number(body.modules.qna.step || 1);
             const cat = String(body.modules.qna.category || '').trim();

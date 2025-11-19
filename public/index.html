@@ -32,6 +32,7 @@
                 <input id="chatInput" type="text" placeholder="Tulis pesan dan tekan Enter..." />
                 <button id="sendButton">Kirim</button>
             </div>
+            
         </div>
 
         <section class="mapping-section">
@@ -70,6 +71,7 @@
         const chatMessages = document.getElementById('chatMessages');
         const chatInput = document.getElementById('chatInput');
         const sendButton = document.getElementById('sendButton');
+        
         const loading = document.getElementById('loading');
         const saveButton = document.getElementById('saveButton');
         const loadSheetButton = document.getElementById('loadSheetButton');
@@ -276,6 +278,7 @@
             const feasStr = find(/Feasibility[^:]*:\s*([0-9]+(?:[\.,][0-9]+)?)/i);
             const totalStr = find(/Total[^:]*:\s*([0-9]+(?:[\.,][0-9]+)?)/i);
             const priority = find(/Priority(?:\s*class)?\s*:\s*([^\n]+)/i);
+            const projectOverview = find(/Project\s*overview\s*:\s*([^\n]+)/i);
 
             const impact = parseNumber(impactStr);
             const feasibility = parseNumber(feasStr);
@@ -289,12 +292,14 @@
                 const rest = t.slice(start);
                 const lines = rest.split(/\n/);
                 const out = [];
+                const boundary = /^(Use\s*case|Domain|Impact|Feasibility|Total|Priority|Project\s*overview|Rekomendasi\s*jalur|Alasan\s*utama|Top\s*risks|Next\s*steps)\b/i;
                 for (const line of lines) {
                     const s = String(line || '').trim();
                     if (!s) break;
+                    if (boundary.test(s)) break;
                     if (/^\d+\./.test(s)) out.push(s.replace(/^\d+\.\s*/, ''));
                     else if (/^[-•]/.test(s)) out.push(s.replace(/^[-•]\s*/, ''));
-                    else break;
+                    else out.push(s);
                 }
                 return out;
             };
@@ -311,6 +316,7 @@
                     total,
                     priority,
                     rekomendasi_jalur: rekom || '',
+                    project_overview: projectOverview || '',
                     alasan,
                     risk: risks,
                     next_step: nextSteps,
@@ -343,6 +349,17 @@
 
             try {
                 let flow = /\b\/qna\b/i.test(text) ? 'qna' : (/\b\/devguide\b/i.test(text) ? 'devguide' : '');
+                const looksNarrative = (() => {
+                    const s = text;
+                    if (s.length > 200) return true;
+                    if (/Use\s*case\s*:/i.test(s)) return true;
+                    if (/Domain\s*:/i.test(s)) return true;
+                    if (/Impact\s*:/i.test(s)) return true;
+                    if (/Feasibility\s*:/i.test(s)) return true;
+                    if (/Priority\s*:/i.test(s)) return true;
+                    return false;
+                })();
+                if (!qnaActive && !flow && looksNarrative) flow = 'narrative';
                 if (/\b\/qna\b/i.test(text)) {
                     qnaActive = true;
                     qnaStep = 1;
@@ -404,20 +421,56 @@
                     ? data.message
                     : 'Model tidak mengembalikan teks. Coba /start atau ringkas narasi.';
                 conversation.push({ role: 'assistant', text: reply });
-                addMessage('assistant', reply);
+                addMessage('assistant', reply); try { if (/\b\/devguide\b/i.test(text)) window.localStorage.setItem('devguide_text', reply); } catch (_) {}
 
                 // Coba parsing hasil /score menjadi objek terstruktur untuk grafik & simpan
                 const parsed = parseAssessmentFromText(reply);
                 if (parsed) {
                     parsed.rawText = reply;
+                    // Tambahkan devguide ke assessment & tanam dalam rawText agar tersimpan ke Sheet
+                    try {
+                        const dg = buildDevguideFromConversation(conversation);
+                        parsed.devguide_text = dg;
+                        if (dg && !/\*\*Developer\s+Guide\*\*/i.test(parsed.rawText || '')) {
+                            parsed.rawText = `${parsed.rawText}\n\n**Developer Guide**\n${dg}`;
+                        }
+                    } catch (_) {}
                     parsed.model_id = String(data.model || '');
                     parsed.run_id = `${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
                     const detectOwner = () => {
+                        // 1) Langsung cari pola "Owner: <nama>"
                         for (const m of conversation) {
                             const s = String(m?.text || '');
                             const mr = s.match(/Owner\s*:\s*(.+)/i);
-                            if (mr) return mr[1].trim();
+                            if (mr) {
+                                const v = mr[1].trim();
+                                try { window.localStorage.setItem('owner', v); } catch (_) {}
+                                return v;
+                            }
+                            const cmd = s.match(/\b\/owner\s+(.+)/i);
+                            if (cmd && m.role === 'user') {
+                                const v = cmd[1].trim();
+                                try { window.localStorage.setItem('owner', v); } catch (_) {}
+                                return v;
+                            }
                         }
+                        // 2) Jika ada pertanyaan Q0 — Owner dari assistant, ambil balasan user setelahnya
+                        for (let i = 0; i < conversation.length; i++) {
+                            const m = conversation[i];
+                            const s = String(m?.text || '');
+                            if (m.role === 'assistant' && /Q0\s*[—-]\s*Owner/i.test(s)) {
+                                for (let j = i + 1; j < conversation.length; j++) {
+                                    const u = conversation[j];
+                                    if (u.role !== 'user') continue;
+                                    const t = String(u?.text || '').trim();
+                                    if (!t || /^\//.test(t)) continue; // abaikan perintah
+                                    const v = t.replace(/^Owner\s*:\s*/i, '').trim();
+                                    try { window.localStorage.setItem('owner', v); } catch (_) {}
+                                    return v;
+                                }
+                            }
+                        }
+                        // 3) Fallback ke localStorage
                         try { return String(window.localStorage.getItem('owner') || ''); } catch (_) { return ''; }
                     };
                     parsed.owner = detectOwner();
@@ -453,6 +506,8 @@
                 sendButton.disabled = false;
             }
         };
+
+        
 
         sendButton.addEventListener('click', send);
         chatInput.addEventListener('keydown', (e) => {
@@ -509,12 +564,27 @@
             return out;
         };
 
+        const buildDevguideFromConversation = (conv) => {
+            for (let i = conv.length - 1; i >= 0; i--) {
+                const m = conv[i];
+                const s = String(m?.text || '');
+                if (m.role === 'user' && /\b\/devguide\b/i.test(s)) {
+                    for (let j = i + 1; j < conv.length; j++) {
+                        if (conv[j].role === 'assistant') return String(conv[j].text || '');
+                    }
+                    break;
+                }
+            }
+            try { return String(window.localStorage.getItem('devguide_text') || ''); } catch (_) { return ''; }
+        };
+
         const generateAssessment = async (assessment, includeQna) => {
             const basePayload = {
                 include_qna: !!includeQna,
                 include_devguide: false,
+                devguide_text: buildDevguideFromConversation(conversation),
                 assessment,
-                conversation: includeQna ? conversation : [],
+                conversation,
                 project_profile: {}
             };
             const tryGenerate = async (format) => {
@@ -559,8 +629,9 @@
             const basePayload = {
                 include_qna: !!includeQna,
                 include_devguide: false,
+                devguide_text: buildDevguideFromConversation(conversation),
                 assessment,
-                conversation: includeQna ? conversation : [],
+                conversation,
                 project_profile: {}
             };
             const resp = await fetchWithTimeout('/.netlify/functions/generate', {
