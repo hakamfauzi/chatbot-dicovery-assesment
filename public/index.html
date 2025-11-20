@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gemini Chatbot</title>
+    <title>GPT‑OSS Chatbot</title>
     <link rel="stylesheet" href="style.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
@@ -20,14 +20,7 @@
                 <div class="spinner"></div>
                 <span>Meminta jawaban LLM...</span>
             </div>
-            <div class="provider-row">
-                <label class="provider-label">Model:
-                  <select id="providerSelect" class="provider-select">
-                    <option value="gemini">Gemini</option>
-                    <option value="groq">GPT‑OSS</option>
-                  </select>
-                </label>
-            </div>
+            
             <div class="chat-input-row">
                 <input id="chatInput" type="text" placeholder="Tulis pesan dan tekan Enter..." />
                 <button id="sendButton">Kirim</button>
@@ -76,8 +69,9 @@
         const saveButton = document.getElementById('saveButton');
         const loadSheetButton = document.getElementById('loadSheetButton');
         
+        
         const saveStatus = document.getElementById('saveStatus');
-        const providerSelect = document.getElementById('providerSelect');
+        
         const sheetCount = document.getElementById('sheetCount');
         const sheetTable = document.getElementById('sheetTable');
         const mappingCanvas = document.getElementById('mappingChart');
@@ -348,6 +342,7 @@
             sendButton.disabled = true;
 
             try {
+                
                 let flow = /\b\/qna\b/i.test(text) ? 'qna' : (/\b\/devguide\b/i.test(text) ? 'devguide' : '');
                 const looksNarrative = (() => {
                     const s = text;
@@ -384,7 +379,7 @@
                 if (qnaActive) flow = 'qna';
                 const assessmentComplete = !!lastAssessment;
                 const modules = qnaActive ? { qna: { step: qnaStep, category: qnaCategory } } : undefined;
-                const scorePath = (providerSelect?.value === 'groq') ? '/.netlify/functions/score_groq' : '/.netlify/functions/score';
+                const scorePath = '/.netlify/functions/score_groq';
                 const response = await fetchWithTimeout(scorePath, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -544,6 +539,25 @@
                 saveButton.disabled = false;
             }
         });
+
+        const generateScenarioExcel = async (payload) => {
+            const resp = await fetchWithTimeout('/.netlify/functions/scenario', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            }, 120000);
+            const blob = await resp.blob();
+            if (!resp.ok) {
+                const txt = await blob.text().catch(() => '');
+                throw new Error(txt || `HTTP ${resp.status}`);
+            }
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            const ts = new Date().toISOString().replace(/[:.-]/g,'').slice(0,15);
+            a.href = url;
+            a.download = `Scenario_Testing_${ts}.xlsx`;
+            a.click();
+            URL.revokeObjectURL(url);
+        };
 
         const buildQnaFromConversation = (conv) => {
             const out = [];
@@ -719,6 +733,7 @@
                             <td class="actions">
                               <button class="btn-gen-pdf-row" data-idx="${i}">PDF</button>
                               <button class="btn-gen-docx-row" data-idx="${i}">DOCX</button>
+                              <button class="btn-gen-scenario-row" data-idx="${i}">Scenario</button>
                             </td>
                         `;
                         tbody.appendChild(tr);
@@ -761,6 +776,29 @@
                             await generateDocx(a, false);
                         });
                     });
+                    const btnsScenario = tbody.querySelectorAll('.btn-gen-scenario-row');
+                    btnsScenario.forEach((btn) => {
+                        btn.addEventListener('click', async () => {
+                            const idx = parseInt(btn.getAttribute('data-idx'), 10);
+                            const x = rows[idx];
+                            const invalid = !(Number.isFinite(x?.impact) && Number.isFinite(x?.feasibility) && Number.isFinite(x?.total));
+                            if (invalid) { alert('Baris tidak valid untuk generate.'); return; }
+                            const a = {
+                                use_case_name: x.use_case_name || '',
+                                domain: x.domain || '',
+                                impact: Number(x.impact) || 0,
+                                feasibility: Number(x.feasibility) || 0,
+                                total: Number(x.total) || 0,
+                                priority: x.priority || '',
+                                rawText: x.rawText || ''
+                            };
+                            try {
+                                await generateScenarioExcel({ assessment: a, conversation, variables: {} });
+                            } catch (err) {
+                                alert(`Gagal generate Scenario: ${err.message}`);
+                            }
+                        });
+                    });
                 };
                 renderSheetList(sheetItems);
             } catch (err) {
@@ -786,13 +824,7 @@
         };
         initChart();
         loadQuestions();
-        try {
-            const savedProv = window.localStorage.getItem('provider') || '';
-            if (savedProv) providerSelect.value = savedProv;
-        } catch (_) {}
-        providerSelect.addEventListener('change', () => {
-            try { window.localStorage.setItem('provider', providerSelect.value); } catch (_) {}
-        });
+        
         loadSheetButton.click();
     </script>
 </body>
