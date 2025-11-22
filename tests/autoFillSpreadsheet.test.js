@@ -7,11 +7,11 @@
 import { jest } from '@jest/globals';
 
 // Mock googleapis (auth JWT & sheets client)
-const appendMock = jest.fn(async (req) => ({ data: { updates: { updatedRange: req.range || 'hasil_llm!A:O' } } }));
+const appendMock = jest.fn(async (req) => ({ data: { updates: { updatedRange: req.range || 'hasil_llm!A:N' } } }));
 const getMock = jest.fn(async () => ({ data: { values: [[
-  'timestamp','use_case_name','domain','impact','feasibility','total','priority','rekomendasi_jalur','alasan','risk','next_step','project_overview','rawText','model_id','run_id','owner'
+  'timestamp','use_case_name','domain','impact','feasibility','total','priority','rekomendasi_jalur','alasan','risk','next_step','project_overview','rawText','devguideText'
 ], [
-  '2025-01-02T10:00:00.000Z','CaseX','Finance','12','34','46','Quick win','Mulai pilot','A1 | A2','R1 | R2','N1 | N2','Gambaran proyek singkat','RAW','gpt-oss','run_1','Owner X'
+  '2025-01-02T10:00:00.000Z','CaseX','Finance','12','34','46','High','Mulai pilot','A1 | A2','R1 | R2','N1 | N2','Gambaran proyek singkat','RAW','Panduan teknis'
 ]] } }));
 
 jest.unstable_mockModule('googleapis', () => ({
@@ -28,7 +28,7 @@ const baseEnv = {
   GOOGLE_CLIENT_EMAIL: 'svc@test.example',
   GOOGLE_PRIVATE_KEY: '"-----BEGIN PRIVATE KEY-----\nABCDEF\n-----END PRIVATE KEY-----"',
   GOOGLE_SHEETS_SPREADSHEET_ID: 'sheet_123',
-  GOOGLE_SHEETS_RANGE: 'hasil_llm!A:P'
+  GOOGLE_SHEETS_RANGE: 'hasil_llm!A:N'
 };
 
 const makeEvent = (body) => ({ httpMethod: 'POST', body: JSON.stringify(body) });
@@ -50,7 +50,7 @@ afterEach(() => {
   delete process.env.GOOGLE_SHEETS_RANGE;
 });
 
-test('Input data valid ditulis ke kolom A:P secara lengkap', async () => {
+test('Input data valid ditulis ke kolom A:N secara lengkap', async () => {
   const { handler } = await importSave();
   const assessment = {
     timestamp: '2025-01-02T10:00:00.000Z',
@@ -74,8 +74,8 @@ test('Input data valid ditulis ke kolom A:P secara lengkap', async () => {
   expect(appendMock).toHaveBeenCalledTimes(1);
   const call = appendMock.mock.calls[0][0];
   expect(call.valueInputOption).toBe('USER_ENTERED');
-  expect(call.requestBody.values[0]).toHaveLength(16);
-  expect(call.range).toBe('hasil_llm!A:P');
+  expect(call.requestBody.values[0]).toHaveLength(14);
+  expect(call.range).toBe('hasil_llm!A:N');
 });
 
 test('Mendukung format data berbeda: teks, angka, tanggal (string ISO)', async () => {
@@ -91,7 +91,7 @@ test('Mendukung format data berbeda: teks, angka, tanggal (string ISO)', async (
     rawText: 'RAW',
   };
   // isi minimal wajib -> lengkapi untuk lolos validasi
-  Object.assign(assessment, { rekomendasi_jalur: '', alasan: [], risk: [], next_step: [], model_id: '', run_id: '', owner: '' });
+  Object.assign(assessment, { rekomendasi_jalur: '', alasan: [], risk: [], next_step: [] });
   const res = await handler(makeEvent({ assessment }));
   expect(res.statusCode).toBe(200);
   const vals = appendMock.mock.calls[0][0].requestBody.values[0];
@@ -135,7 +135,6 @@ test('Auto-fill dari rawText: rekomendasi, alasan, risk, next steps diparse', as
     total: 120,
     priority: 'Quick win',
     rawText: raw,
-    model_id: 'gpt-oss-120b', run_id: 'run_2', owner: 'Owner B'
   };
   const res = await handler(makeEvent({ assessment }));
   expect(res.statusCode).toBe(200);
@@ -206,28 +205,7 @@ test('Performa batch: 25 operasi append terproses', async () => {
   expect(appendMock).toHaveBeenCalledTimes(25);
 });
 
-test('Save handler: run_id otomatis dan owner diparse dari rawText saat tidak diset', async () => {
-  const { handler } = await importSave();
-  const assessment = {
-    timestamp: '2025-01-02T10:00:00.000Z',
-    use_case_name: 'AI OCR',
-    domain: 'Finance',
-    impact: 70,
-    feasibility: 50,
-    total: 120,
-    priority: 'Quick win',
-    rawText: [
-      'Use case: AI OCR',
-      'Domain: Finance',
-      'Owner: Owner Z'
-    ].join('\n')
-  };
-  const res = await handler(makeEvent({ assessment }));
-  expect(res.statusCode).toBe(200);
-  const vals = appendMock.mock.calls[appendMock.mock.calls.length - 1][0].requestBody.values[0];
-  expect(String(vals[14] || '')).not.toEqual(''); // run_id otomatis terisi
-  expect(vals[15]).toEqual('Owner Z'); // owner diparse dari rawText
-});
+// run_id/owner/model_id tidak lagi digunakan pada skema baru
 
 // Tambahan: verifikasi pembacaan list untuk konsistensi format
 test('List handler membaca semua kolom sesuai header (termasuk project_overview)', async () => {
@@ -235,18 +213,18 @@ test('List handler membaca semua kolom sesuai header (termasuk project_overview)
   const res = await handler({ httpMethod: 'GET', queryStringParameters: {} });
   expect(res.statusCode).toBe(200);
   const json = JSON.parse(res.body);
-  const item = json.items.find((x) => String(x.owner || '') === 'Owner X');
+  const item = json.items.find((x) => String(x.use_case_name || '') === 'CaseX');
   expect(item).toBeTruthy();
-  expect(item.priority).toMatch(/Quick/i);
+  expect(String(item.priority || '')).toMatch(/High|Quick|Second|Watch|Defer/i);
   expect(item.total).toBe(46);
 });
 
 test('List: baris header hasil_llm di-exclude (tidak ditampilkan)', async () => {
   // Siapkan values: baris pertama adalah header, baris kedua data
   getMock.mockResolvedValueOnce({ data: { values: [[
-    'timestamp','use_case_name','domain','impact','feasibility','total','priority','rekomendasi_jalur','alasan','risk','next_step','project_overview','rawText','model_id','run_id','owner'
+    'timestamp','use_case_name','domain','impact','feasibility','total','priority','rekomendasi_jalur','alasan','risk','next_step','project_overview','rawText','devguideText'
   ], [
-    '2025-01-02T10:00:00.000Z','CaseX','Finance','12','34','46','Quick win','Mulai pilot','A1 | A2','R1 | R2','N1 | N2','Overview','RAW','gpt-oss','run_1','Owner X'
+    '2025-01-02T10:00:00.000Z','CaseX','Finance','12','34','46','High','Mulai pilot','A1 | A2','R1 | R2','N1 | N2','Overview','RAW','Panduan'
   ]] } });
   const { handler } = await importList();
   const res = await handler({ httpMethod: 'GET', queryStringParameters: {} });

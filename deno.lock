@@ -12,7 +12,11 @@
     "packageJson": {
       "dependencies": [
         "npm:@google/generative-ai@~0.24.1",
-        "npm:googleapis@135"
+        "npm:@sparticuz/chromium@126",
+        "npm:docx@^9.5.1",
+        "npm:googleapis@135",
+        "npm:jest@^29.7.0",
+        "npm:puppeteer-core@^22.10.0"
       ]
     }
   }

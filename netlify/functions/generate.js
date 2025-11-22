@@ -1,6 +1,6 @@
 import chromium from "@sparticuz/chromium";
 import puppeteer from "puppeteer-core";
-import { Document, Packer, Paragraph, TextRun, HeadingLevel, Table, TableRow, TableCell, AlignmentType, WidthType, Header, Footer, PageNumber, ExternalHyperlink, ImageRun } from "docx";
+ 
 
 export const handler = async (event) => {
   try {
@@ -357,84 +357,7 @@ export const handler = async (event) => {
       };
     }
 
-    if (format === "docx") {
-      let execPath;
-      try { execPath = await chromium.executablePath(); } catch (_) {
-        execPath = process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROME_PATH || "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
-      }
-      const svgToPng = async (svg, w = 520, h = 220) => {
-        const browser = await puppeteer.launch({ args: chromium.args, defaultViewport: { width: w, height: h }, executablePath: execPath, headless: true });
-        const page = await browser.newPage();
-        await page.setViewport({ width: w, height: h, deviceScaleFactor: 2 });
-        await page.setContent(`<html><body style="margin:0">${svg}</body></html>`, { waitUntil: "networkidle0" });
-        const buf = await page.screenshot({ type: "png", clip: { x: 0, y: 0, width: w, height: h } });
-        await browser.close();
-        return buf;
-      };
-
-      const qImg = await svgToPng(quadrantSvg);
-      const fImg = await svgToPng((() => {
-        const w = 520, h = 220;
-        return `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">${financeSvg.replace(/<svg[\s\S]*?>|<\/svg>/g, "")}</svg>`;
-      })());
-
-      const children = [];
-      children.push(new Paragraph({ text: "Executive Summary of a Project Report", heading: HeadingLevel.TITLE }));
-      children.push(new Paragraph({ text: "Project Overview", heading: HeadingLevel.HEADING_2 }));
-      for (const x of [...reasons.slice(0,3), recommendedPath ? `Rekomendasi: ${recommendedPath}` : ""].filter(Boolean)) {
-        children.push(new Paragraph({ text: x, bullet: { level: 0 } }));
-      }
-
-      children.push(new Paragraph({ text: "Project Details", heading: HeadingLevel.HEADING_2 }));
-      children.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: [
-        new TableRow({ children: [ new TableCell({ children: [new Paragraph("Project Name")] }), new TableCell({ children: [new Paragraph(useCase)] }), new TableCell({ children: [new Paragraph("Project Number")] }), new TableCell({ children: [new Paragraph(String(profile.project_number || "—"))] }) ] }),
-        new TableRow({ children: [ new TableCell({ children: [new Paragraph("Project Sponsor")] }), new TableCell({ children: [new Paragraph(String(profile.sponsor || domain || "—"))] }), new TableCell({ children: [new Paragraph("Project Owner")] }), new TableCell({ children: [new Paragraph(String(profile.owner || "—"))] }) ] }),
-        new TableRow({ children: [ new TableCell({ children: [new Paragraph("Program Manager")] }), new TableCell({ children: [new Paragraph(String(profile.program_manager || "—"))] }), new TableCell({ children: [new Paragraph("Project Manager")] }), new TableCell({ children: [new Paragraph(String(profile.project_manager || "—"))] }) ] }),
-        new TableRow({ children: [ new TableCell({ children: [new Paragraph("Completed by")] }), new TableCell({ children: [new Paragraph(String(profile.completed_by || "—"))] }), new TableCell({ children: [new Paragraph("Priority")] }), new TableCell({ children: [new Paragraph(priority)] }) ] }),
-      ] }));
-
-      children.push(new Paragraph({ text: "Key Accomplishments", heading: HeadingLevel.HEADING_2 }));
-      children.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: [ new TableRow({ children: [ new TableCell({ children: [ new Paragraph({ text: "Current Period", heading: HeadingLevel.HEADING_3 }), ...reasons.map(x => new Paragraph({ text: x, bullet: { level: 0 } })) ] }), new TableCell({ children: [ new Paragraph({ text: "Planned for next period", heading: HeadingLevel.HEADING_3 }), ...nextSteps.map(x => new Paragraph({ text: x, bullet: { level: 0 } })) ] }) ] }) ] }));
-
-      children.push(new Paragraph({ text: "Project Determine (Quadrant)", heading: HeadingLevel.HEADING_2 }));
-      children.push(new Paragraph({ children: [ new ImageRun({ data: qImg, transformation: { width: 520, height: 220 } }) ] }));
-
-      children.push(new Paragraph({ text: "Financial Overview of the Project", heading: HeadingLevel.HEADING_2 }));
-      children.push(new Paragraph({ children: [ new ImageRun({ data: fImg, transformation: { width: 520, height: 220 } }) ] }));
-
-      children.push(new Paragraph({ text: "Project Deliverable Timeline", heading: HeadingLevel.HEADING_2 }));
-      children.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: [ new TableRow({ children: [ new TableCell({ children: [new Paragraph("Project Deliverable")] }), ...["March","April","May","June","July"].map(m=> new TableCell({ children: [new Paragraph(m)] })) ] }), ...["Technical Interpretation","Engineering Report","Resource Availability Report","Server Replacement"].map(d => new TableRow({ children: [ new TableCell({ children: [new Paragraph(d)] }), ...Array(5).fill(0).map(()=> new TableCell({ children: [new Paragraph("○")] })) ] })) ] }));
-
-      children.push(new Paragraph({ text: "Key Risks", heading: HeadingLevel.HEADING_2 }));
-      children.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: [ new TableRow({ children: ["Risk","Response","Date Identified","Status","Owner"].map(t=> new TableCell({ children: [new Paragraph(t)] })) }), ...(risksBlock.length ? risksBlock.map(r => new TableRow({ children: [ new TableCell({ children: [new Paragraph(r)] }), new TableCell({ children: [new Paragraph("Mitigasi direncanakan")] }), new TableCell({ children: [new Paragraph(new Date().toLocaleDateString('id-ID'))] }), new TableCell({ children: [new Paragraph("Open")] }), new TableCell({ children: [new Paragraph(String(profile.project_manager || profile.owner || "—"))] }), ] })) : [ new TableRow({ children: [ new TableCell({ children: [new Paragraph("Tidak disebut")] }), new TableCell({ children: [new Paragraph("")] }), new TableCell({ children: [new Paragraph("")] }), new TableCell({ children: [new Paragraph("")] }), new TableCell({ children: [new Paragraph("")] }) ] }) ]) ] }));
-
-      if (String(profile.website || "").trim()) {
-        children.push(new Paragraph({ children: [ new TextRun({ text: "Website: " }), new ExternalHyperlink({ link: String(profile.website), children: [ new TextRun({ text: String(profile.website), style: "Hyperlink" }) ] }) ] }));
-      }
-
-      const doc = new Document({
-        creator: String(profile.owner || ""),
-        title: `Executive Summary — ${useCase}`,
-        description: String(profile.description || ""),
-        sections: [{
-          headers: { default: new Header({ children: [ new Paragraph({ text: `Executive Summary — ${useCase}`, alignment: AlignmentType.LEFT }) ] }) },
-          footers: { default: new Footer({ children: [ new Paragraph({ alignment: AlignmentType.CENTER, children: [ new TextRun({ text: "Page " }), PageNumber.CURRENT ] }) ] }) },
-          children
-        }]
-      });
-
-      const buf = await Packer.toBuffer(doc);
-      const filename = `Usecase_${useCase.replace(/[^a-z0-9]+/gi,'_')}.docx`;
-      return {
-        statusCode: 200,
-        isBase64Encoded: true,
-        headers: {
-          "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-          "Content-Disposition": `attachment; filename="${filename}"`
-        },
-        body: Buffer.from(buf).toString("base64")
-      };
-    }
+    
 
     let execPath;
     try { execPath = await chromium.executablePath(); } catch (_) {

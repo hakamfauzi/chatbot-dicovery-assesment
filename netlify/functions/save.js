@@ -36,7 +36,7 @@ export const handler = async (event) => {
     const clientEmail = (process.env.GOOGLE_CLIENT_EMAIL || process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || "").trim();
     const privateKeyRaw = (process.env.GOOGLE_PRIVATE_KEY || process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY || process.env.GOOGLE_PRIVATE_KEY_BASE64 || "").trim();
     const spreadsheetId = (process.env.GOOGLE_SHEETS_SPREADSHEET_ID || "").trim();
-    const range = (process.env.GOOGLE_SHEETS_RANGE || "hasil_llm!A:P").trim();
+    const range = (process.env.GOOGLE_SHEETS_RANGE || "hasil_llm!A:N").trim();
 
     if (!clientEmail || !privateKeyRaw || !spreadsheetId) {
       return {
@@ -105,36 +105,37 @@ export const handler = async (event) => {
     const alasan = toList(a.alasan) || parseListFromRaw(a.rawText, "Alasan utama");
     const risk = toList(a.risk) || parseListFromRaw(a.rawText, "Top risks");
     const nextStep = toList(a.next_step) || parseListFromRaw(a.rawText, "Next steps");
-    const modelId = String(a.model_id || a.model || "");
-    const runId = String(a.run_id || `${Date.now()}_${Math.random().toString(36).slice(2,8)}`);
-    const owner = String(a.owner || parseSingleFromRaw(a.rawText, "Owner") || (process.env.DEFAULT_OWNER || ""));
-
     const devguideText = String(a.devguide_text || "").trim();
     const rawBase = String(a.rawText || "");
-    const rawTextWithDev = (() => {
-      if (!devguideText) return rawBase;
-      if (/\*\*Developer\s+Guide\*\*/i.test(rawBase)) return rawBase; // sudah tertanam
-      return `${rawBase}\n\n**Developer Guide**\n${devguideText}`;
-    })();
+    const rawTextClean = rawBase;
+
+    const mapPriority = (p) => {
+      const s = String(p || '').toLowerCase();
+      if (s.includes('quick')) return 'High';
+      if (s.includes('second')) return 'Medium';
+      if (s.includes('watch') || s.includes('experiment') || s.includes('defer')) return 'Low';
+      return String(p || '');
+    };
+    const impactNum = Number(a.impact);
+    const feasibilityNum = Number(a.feasibility);
+    const totalNum = Number(a.total != null ? a.total : (impactNum + feasibilityNum));
 
     const values = [
       [
         a.timestamp,
         String(a.use_case_name),
         String(a.domain),
-        Number(a.impact),
-        Number(a.feasibility),
-        Number(a.total),
-        String(a.priority),
+        impactNum,
+        feasibilityNum,
+        totalNum,
+        mapPriority(a.priority),
         rekom,
         alasan,
         risk,
         nextStep,
         projectOverview,
-        rawTextWithDev,
-        modelId,
-        runId,
-        owner,
+        rawTextClean,
+        devguideText,
       ],
     ];
 
