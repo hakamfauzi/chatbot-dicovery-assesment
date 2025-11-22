@@ -152,9 +152,9 @@
         const getColorByPriority = (priority) => {
             const p = String(priority || '').toLowerCase();
             if (p.includes('quick')) return '#2e7d32'; // hijau
-            if (p.includes('second')) return '#f9a825'; // kuning
-            if (p.includes('watch') || p.includes('experiment')) return '#1565c0'; // biru
-            if (p.includes('defer')) return '#9e9e9e'; // abu
+            if (p.includes('second')) return '#1565c0'; // biru
+            if (p.includes('watch') || p.includes('experiment')) return '#f9a825'; // kuning
+            if (p.includes('defer')) return '#c62828'; // merah
             return '#673ab7'; // fallback ungu
         };
 

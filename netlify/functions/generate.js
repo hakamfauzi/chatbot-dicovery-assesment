@@ -95,9 +95,73 @@ export const handler = async (event) => {
       return out;
     };
 
-    const reasons = parseList(rawText, /\*\*Alasan utama[^\n]*\*\*/i);
-    const risksBlock = parseList(rawText, /\*\*Top risks[^\n]*\*\*/i);
-    const nextSteps = parseList(rawText, /\*\*Next steps[^\n]*\*\*/i);
+    const parseListFlexible = (text, keys) => {
+      const lines = String(text || "").split(/\r?\n/);
+      const keysLC = (Array.isArray(keys) ? keys : [keys]).map((k) => String(k || "").toLowerCase());
+      let start = -1;
+      for (let i = 0; i < lines.length; i++) {
+        const s = String(lines[i] || "").trim();
+        const sl = s.toLowerCase();
+        const isHeading = /^\*\*.*\*\*$/.test(s) || /^#{1,4}\s+/.test(s);
+        if ((isHeading && keysLC.some((k) => sl.includes(k))) || (keysLC.some((k) => sl.startsWith(k)) && /[:—-]/.test(sl))) { start = i + 1; break; }
+      }
+      if (start < 0) return [];
+      const out = [];
+      for (let j = start; j < lines.length; j++) {
+        const t = String(lines[j] || "").trim();
+        if (!t) break;
+        if (/^\*\*.*\*\*$/.test(t) || /^#{1,4}\s+/.test(t)) break;
+        if (/^[-•]\s+/.test(t)) out.push(t.replace(/^[-•]\s+/, ""));
+        else if (/^\d+\.\s+/.test(t)) out.push(t.replace(/^\d+\.\s+/, ""));
+        else { out.push(t); if (t.endsWith(".")) break; }
+      }
+      return out;
+    };
+
+    const findVal = (label) => {
+      const m = String(rawText || "").match(new RegExp(label + "[^:]*:\\s*(.+)", "i"));
+      return m ? String(m[1]).trim() : "";
+    };
+    const stripMd = (s) => String(s || "").replace(/^\*\*|\*\*$/g, "").trim();
+    const findKvFlexible = (labels) => {
+      const lines = String(rawText || "").split(/\r?\n/);
+      const aliases = (Array.isArray(labels) ? labels : [labels]).map((x) => String(x || "").toLowerCase());
+      for (let i = 0; i < lines.length; i++) {
+        const raw = String(lines[i] || "");
+        const s = raw.trim();
+        const sl = s.toLowerCase();
+        if (!s) continue;
+        if (aliases.some((a) => sl.includes(a))) {
+          const m = s.match(/[:\-–—]\s*(.+)$/);
+          if (m) return stripMd(m[1]);
+          const nxt = String(lines[i + 1] || "").trim();
+          if (nxt && !/^\*\*.*\*\*$/.test(nxt) && !/^#{1,6}\s+/.test(nxt)) return stripMd(nxt);
+        }
+      }
+      return "";
+    };
+
+    const findOwner = () => {
+      const t = String(rawText || "");
+      const pats = [
+        /\bowner\s*project\s*[:\-–—]\s*(.+)/i,
+        /\bproject\s*owner\s*[:\-–—]\s*(.+)/i,
+        /\bowner\s*[:\-–—]\s*(.+)/i
+      ];
+      for (const re of pats) {
+        const m = t.match(re);
+        if (m && m[1]) return stripMd(m[1]).trim();
+      }
+      const kv = findKvFlexible(["owner project","project owner","owner","pemilik proyek"]);
+      return kv;
+    };
+
+    let reasons = parseList(rawText, /\*\*Alasan utama[^\n]*\*\*/i);
+    if (!reasons.length) reasons = parseListFlexible(rawText, ["alasan utama","alasan"]);
+    let risksBlock = parseList(rawText, /\*\*Top risks[^\n]*\*\*/i);
+    if (!risksBlock.length) risksBlock = parseListFlexible(rawText, ["top risks","risiko utama","risiko"]);
+    let nextSteps = parseList(rawText, /\*\*Next steps[^\n]*\*\*/i);
+    if (!nextSteps.length) nextSteps = parseListFlexible(rawText, ["next steps","langkah selanjutnya","next step","aksi lanjutan"]);
 
     const extractQna = (conv) => {
       const out = [];
@@ -200,24 +264,13 @@ export const handler = async (event) => {
     const style = `
       <style>
         body { font-family: Calibri, Arial, sans-serif; color: #0f172a; }
-        .header { background: #0d47a1; color: #fff; padding: 16px 20px; }
-        .header h1 { margin: 0; font-size: 24px; }
-        .sub { margin-top: 6px; font-size: 12px; opacity: 0.9; }
-        .header-row { display: grid; grid-template-columns: 1fr 80px; align-items: center; }
-        .logo { width: 64px; height: 64px; border-radius: 50%; background: #fff; color: #0d47a1; display:flex; align-items:center; justify-content:center; font-weight:700; }
-        .topbar { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; background: #e5efff; padding: 8px 20px; font-size: 12px; }
-        .topbar .right { text-align: right; }
-        .section-title { background: #e5efff; color: #0d47a1; padding: 10px 12px; font-weight: 700; border-left: 4px solid #0d47a1; }
-        .content { padding: 18px 20px; }
-        .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-        .kv { display: grid; grid-template-columns: 180px 1fr; gap: 6px; }
-        .badge { display: inline-block; padding: 4px 8px; border-radius: 4px; background: #e3f2fd; color: #0d47a1; }
-        .table { width: 100%; border-collapse: collapse; }
-        .table.tight th, .table.tight td { border: 1px solid #cbd5e1; padding: 6px; font-size: 11px; }
-        .table th { background: #eef2ff; text-align: left; }
-        ul { margin: 8px 0 0 18px; }
-        .small { font-size: 11px; color: #475569; }
-        .footer { position: fixed; bottom: 0; width: 100%; text-align: center; font-size: 10px; color: #64748b; }
+        .panel { border: 1px solid #cbd5e1; border-radius: 8px; margin: 16px 20px; overflow: hidden; }
+        .panel-header { background: #e5efff; color: #0d47a1; padding: 10px 12px; font-weight: 700; }
+        .panel-body { padding: 16px 18px; }
+        .title { margin: 0 0 6px 0; color: #0d47a1; }
+        .title-main { margin: 0 0 8px 0; color: #0d47a1; font-size: 22px; font-weight: 700; }
+        .kv { display: grid; grid-template-columns: 140px 1fr; gap: 6px; }
+        .kv .key { font-weight: 700; color: #0d47a1; }
         .md h1, .md h2, .md h3 { margin: 6px 0; color: #0d47a1; }
         .md p { margin: 6px 0; line-height: 1.5; }
         .md ul, .md ol { margin: 6px 0 6px 18px; }
@@ -277,74 +330,173 @@ export const handler = async (event) => {
       return out.join("");
     };
 
+    const sanitizeForPdf = (text) => {
+      const lines = String(text || "").split(/\r?\n/);
+      const drop = [/ketik\s*\/score/i, /gunakan\s*\/revise/i, /\/score\b/i, /\/revise\b/i, /\/start\b/i, /\/qna\b/i, /\/devguide\b/i, /\/export\s+json\b/i, /\/help\b/i];
+      const keep = lines.filter((l) => !drop.some((r) => r.test(l)));
+      return keep.join("\n").trim();
+    };
+
+    const isHeadingLine = (s) => /^\s*\*\*[^*]+\*\*\s*$/.test(s) || /^\s*#{1,6}\s+/.test(s);
+    const isDGHeading = (s) => {
+      const t = String(s || '').trim();
+      const lc = t.toLowerCase();
+      return (isHeadingLine(t) && (lc.includes('developer guide') || lc.includes('design solution')));
+    };
+    const removeSectionsFlex = (text, sectionNames) => {
+      const names = (Array.isArray(sectionNames) ? sectionNames : [sectionNames]).filter(Boolean);
+      const nameRegexes = names.map((n) => new RegExp(n, 'i'));
+      const lines = String(text || '').split(/\r?\n/);
+      const isTableLine = (t) => /^\s*\|.*\|\s*$/.test(t) || /^\s*\|\s*:?-+:?\s*\|/.test(t);
+      const isListLine = (t) => /^\s*[-•]\s+/.test(t) || /^\s*\d+\.\s+/.test(t);
+      let skipping = false;
+      const out = [];
+      for (let i = 0; i < lines.length; i++) {
+        const raw = String(lines[i] || '');
+        const s = raw.trim();
+        const isStart = nameRegexes.some((re) => re.test(s));
+        const isEnd = isHeadingLine(s) || nameRegexes.some((re) => re.test(s));
+        if (!skipping && isStart) { skipping = true; continue; }
+        if (skipping) {
+          if (isEnd) { skipping = false; }
+          else if (!s) { continue; }
+          else if (isTableLine(s) || isListLine(s) || !isHeadingLine(s)) { continue; }
+          else { skipping = false; }
+          if (!skipping) { /* fall-through to push current line if not end */ }
+          else { continue; }
+        }
+        out.push(raw);
+      }
+      return out.join('\n');
+    };
+
+    const mdInline = (s) => {
+      let t = String(s || "");
+      t = t.replace(/^\s*\*\*\s+([^\n]+)/gm, '<b>$1</b>');
+      t = t.replace(/\*\*\{\s*([^}]+)\s*\}\*\*/g, '<b>$1</b>');
+      t = t.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+      t = t.replace(/\*(.+?)\*/g, '<i>$1</i>');
+      t = t.replace(/`([^`]+?)`/g, '<code>$1</code>');
+      return t;
+    };
+
+    const extractTableAfterHeading = (text, headingRe) => {
+      const lines = String(text || "").split(/\r?\n/);
+      let idx = -1;
+      for (let i = 0; i < lines.length; i++) {
+        const s = String(lines[i] || "").trim();
+        if (headingRe.test(s) || /\bTabel\s*Skor\s*&\s*Kontribusi\b/i.test(s)) { idx = i; break; }
+      }
+      if (idx < 0) return "";
+      const out = [];
+      for (let j = idx + 1; j < lines.length; j++) {
+        const t = String(lines[j] || "").trim();
+        if (!t) continue;
+        if (/^\*\*.*\*\*$/.test(t) || /^#{1,4}\s+/.test(t)) break;
+        // Tangkap format md khas ChatGPT (header + separator + rows)
+        if (/^\s*\|.*\|\s*$/.test(t) || /^\s*\|\s*:?-+:?\s*\|/.test(t)) out.push(lines[j]);
+      }
+      return out.join("\n");
+    };
+
+    const extractFirstMarkdownTable = (text) => {
+      const lines = String(text || "").split(/\r?\n/);
+      for (let i = 0; i < lines.length - 1; i++) {
+        const header = String(lines[i] || "").trim();
+        const sep = String(lines[i + 1] || "").trim();
+        if (/^\s*\|.*\|\s*$/.test(header) && /^\s*\|(?:\s*:?-+:?\s*\|)+\s*$/.test(sep)) {
+          const out = [lines[i], lines[i + 1]];
+          for (let j = i + 2; j < lines.length; j++) {
+            const row = String(lines[j] || "").trim();
+            if (!/^\s*\|.*\|\s*$/.test(row)) break;
+            out.push(lines[j]);
+          }
+          return out.join("\n");
+        }
+      }
+      return "";
+    };
+
+    const projectOverviewText = findVal("Project\\s*overview") || findKvFlexible(["project overview","ringkasan proyek"]);
+    const projectOwnerText = findOwner() || String(profile.owner || "");
+
+    const scoreTableText = extractTableAfterHeading(rawText, /\*\*Tabel\s*Skor[\s\S]*?Kontribusi\*\*/i) || extractFirstMarkdownTable(rawText);
+
     const html = `
       <!DOCTYPE html>
       <html>
       <head>
         <meta charset="utf-8"/>
         ${style}
-        <title>Executive Summary</title>
+        <title>Developer Guide</title>
       </head>
       <body>
-        <div class="header">
-          <div class="header-row">
-            <div>
-              <h1>Executive Summary of a Project Report</h1>
-              <div class="sub">Ringkasan satu halaman mencakup judul proyek, detail proyek, pencapaian, gambaran finansial, timeline deliverable, dan risiko utama.</div>
-            </div>
-            <div class="logo">Logo</div>
+        <div class="panel">
+          <div class="panel-header">Use Case Summary</div>
+          <div class="panel-body">
+            <h1 class="title-main">${useCase}</h1>
+            <div class="kv"><div class="key">Domain</div><div>${domain}</div></div>
+            <div class="kv"><div class="key">Impact</div><div>${impact}</div></div>
+            <div class="kv"><div class="key">Feasibility</div><div>${feasibility}</div></div>
+            <div class="kv"><div class="key">Total</div><div>${total}</div></div>
+            <div class="kv"><div class="key">Priority</div><div>${priority}</div></div>
+            ${recommendedPath ? `<div class="kv"><div class="key">Recommended Path</div><div>${mdInline(recommendedPath)}</div></div>` : ''}
+            ${projectOverviewText ? `<div class="kv"><div class="key">Project Overview</div><div>${mdInline(projectOverviewText)}</div></div>` : ''}
+            ${projectOwnerText ? `<div class="kv"><div class="key">Project Owner</div><div>${mdInline(projectOwnerText)}</div></div>` : ''}
+            <h3 class="title" style="margin-top:12px">Alasan utama</h3>
+            <ul>${reasons.map(x=>`<li>${mdInline(x)}</li>`).join("") || "<li>Tidak disebut</li>"}</ul>
+            <h3 class="title" style="margin-top:12px">Top risks</h3>
+            <ul>${risksBlock.map(x=>`<li>${mdInline(x)}</li>`).join("") || "<li>Tidak disebut</li>"}</ul>
+            <h3 class="title" style="margin-top:12px">Next steps</h3>
+            <ul>${nextSteps.map(x=>`<li>${mdInline(x)}</li>`).join("") || "<li>Tidak disebut</li>"}</ul>
+            ${scoreTableText ? `<h3 class="title" style="margin-top:12px">Tabel Skor & Kontribusi</h3><div class="md">${mdToHtml(scoreTableText)}</div>` : ''}
           </div>
         </div>
-        <div class="topbar">
-          <div>Project Title: ${useCase}</div>
-          <div class="right">Address: ${String(profile.address || "")} · Email: ${String(profile.email || "")} · Website: ${String(profile.website || "")}</div>
-        </div>
-        <div class="content">
-          <div class="section-title">Project Overview</div>
-          <ul>${[...reasons.slice(0,3), recommendedPath ? `Rekomendasi: ${recommendedPath}` : ""].filter(Boolean).map(x=>`<li>${x}</li>`).join("") || "<li>Tidak disebut</li>"}</ul>
 
-          <div style="margin-top:12px" class="section-title">Project Details</div>
-          <table class="table tight">
-            <tr><th>Project Name</th><td>${useCase}</td><th>Project Number</th><td>${String(profile.project_number || "—")}</td></tr>
-            <tr><th>Project Sponsor</th><td>${String(profile.sponsor || domain || "—")}</td><th>Project Owner</th><td>${String(profile.owner || "—")}</td></tr>
-            <tr><th>Program Manager</th><td>${String(profile.program_manager || "—")}</td><th>Project Manager</th><td>${String(profile.project_manager || "—")}</td></tr>
-            <tr><th>Completed by</th><td>${String(profile.completed_by || "—")}</td><th>Priority</th><td><span class="badge">${priority}</span></td></tr>
-          </table>
-
-          <div style="margin-top:12px" class="section-title">Key Accomplishments</div>
-          <div class="grid2">
-            <div>
-              <div style="font-weight:700; margin-bottom:6px">Current Period</div>
-              <ul>${reasons.map(x=>`<li>${x}</li>`).join("") || "<li>Tidak disebut</li>"}</ul>
-            </div>
-            <div>
-              <div style="font-weight:700; margin-bottom:6px">Planned for next period</div>
-              <ul>${nextSteps.map(x=>`<li>${x}</li>`).join("") || "<li>Tidak disebut</li>"}</ul>
-            </div>
+        <div class="panel">
+          <div class="panel-header">Usecase Positioning</div>
+          <div class="panel-body">
+            <div class="kv"><div class="key">Impact (Y)</div><div>${impact}</div></div>
+            <div class="kv"><div class="key">Feasibility (X)</div><div>${feasibility}</div></div>
+            <div style="margin-top:10px">${quadrantSvg}</div>
           </div>
-
-          <div style="margin-top:12px" class="section-title">Financial Overview of the Project</div>
-          <div class="small">Total Project Cost Split (estimasi)</div>
-          <div style="margin-top:8px">${financeSvg}</div>
-
-          <div style="margin-top:12px" class="section-title">Project Deliverable Timeline</div>
-          ${timelineHtml}
-
-          <div style="margin-top:12px" class="section-title">Key Risks</div>
-          <table class="table tight">
-            <tr><th>Risk</th><th>Response</th><th>Date Identified</th><th>Status</th><th>Owner</th></tr>
+        </div>
+        <div class="panel">
+          <div class="panel-header">Design Solution</div>
+          <div class="panel-body">
+            <h2 class="title">Design Solution — ${useCase} (${domain})</h2>
             ${(() => {
-              const todayStr = new Date().toLocaleDateString('id-ID');
-              if (!risksBlock.length) return `<tr><td colspan="5" class="small">Tidak disebut</td></tr>`;
-              return risksBlock.map(r => `<tr><td>${r}</td><td>Mitigasi direncanakan</td><td>${todayStr}</td><td>Open</td><td>${String(profile.project_manager || profile.owner || "—")}</td></tr>`).join("");
+              const lines = String(rawText || '').split(/\r?\n/);
+              let start = -1;
+              for (let i = 0; i < lines.length; i++) {
+                const s = String(lines[i] || '').trim();
+                if (isDGHeading(s) || /developer\s*guide/i.test(s) || /design\s*solution/i.test(s)) { start = i; break; }
+              }
+              let block = '';
+              if (start >= 0) {
+                const out = [];
+                for (let j = start; j < lines.length; j++) {
+                  const t = String(lines[j] || '').trim();
+                  const isSummary = /^(\s*\*\*\s*(Ringkasan|Alasan|Top\s*risks|Next\s*steps|Tabel\s*Skor).*)$/i.test(t)
+                    || /^#{1,6}\s+(Use\s*Case\s*Summary|Usecase\s*Positioning|Solution)/i.test(t);
+                  if (isSummary) break;
+                  out.push(lines[j]);
+                }
+                block = out.join('\n');
+              }
+              const summaryKeys = [
+                'Ringkasan\s*&\s*Keputusan',
+                'Alasan\s*utama',
+                'Top\s*risks',
+                'Next\s*steps',
+                'Tabel\s*Skor\s*&\s*Kontribusi',
+                'Tabel\s*Skor'
+              ];
+              const base = String(devguideText || block || removeSectionsFlex(rawText, summaryKeys)) || '';
+              return `<div class=\"md\">${mdToHtml(sanitizeForPdf(base))}</div>`;
             })()}
-          </table>
+          </div>
         </div>
-
-        ${includeQna ? `<div class="content"><div class="section-title">Lampiran QnA</div>${qna.length ? `<ol>${qna.map(x=>`<li><div><b>Q${x.number}</b>: ${x.question}</div><div>Jawaban: ${x.answer || ""}</div></li>`).join("")}</ol>` : `<div class="small">Tidak ada.</div>`}</div>` : ""}
-
-        ${includeDevguide && devguideText ? `<div class="content"><div class="section-title">Developer Guide</div><div class="md">${mdToHtml(devguideText)}</div></div>` : ""}
-        <div class="footer">Dokumen internal</div>
       </body>
       </html>
     `;
