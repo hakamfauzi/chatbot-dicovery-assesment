@@ -9,6 +9,10 @@ test('Scenario: generate xlsx with required sheets and validations', async () =>
 Q: Apa jam operasional layanan?
 A: Layanan beroperasi 24/7 dengan SLA tanggapan.
 [/KNOWLEDGE BASE]
+
+| No | Aspek | Pernyataan (Test Step) | Ucapan Pelanggan (Input) | Perilaku yang Diharapkan (Expected) | Target Sederhana | Bukti yang Dicek | Catatan |
+|----|-------|-------------------------|---------------------------|-------------------------------------|------------------|------------------|---------|
+| 1  | Latency | Bot merespon ≤ {{LATENCY_MAX_SEC}}s | Halo | Menjawab cepat | Respon cepat | Log latensi | |
 `;
   const assessment = {
     use_case_name: 'Voicebot Support',
@@ -26,10 +30,10 @@ A: Layanan beroperasi 24/7 dengan SLA tanggapan.
   const wsVar = wb.getWorksheet('Variables');
   expect(wsVar.rowCount).toBeGreaterThanOrEqual(10);
   const wsSk = wb.getWorksheet('Skenario Uji (Pelanggan)');
-  expect(wsSk.getRow(1).values.slice(1,9)).toEqual([
-    'Aspek','Pernyataan','Ucapan Pelanggan','Perilaku yang Diharapkan','Target Sederhana','Bukti yang Dicek','Catatan','Skor (1–5)'
+  expect(wsSk.getRow(1).values.slice(1,10)).toEqual([
+    'No','Aspek','Pernyataan','Ucapan Pelanggan','Perilaku yang Diharapkan','Target Sederhana','Bukti yang Dicek','Catatan','Skor (1–5)'
   ]);
-  expect(wsSk.rowCount).toBeGreaterThan(20);
+  expect(wsSk.rowCount).toBeGreaterThan(21);
 });
 
 test('Scenario: method bukan POST -> 405', async () => {

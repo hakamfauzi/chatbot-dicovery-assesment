@@ -145,25 +145,62 @@ const writeRubricSheet = (wb) => {
   return ws;
 };
 
-const writeScenarioSheet = (wb, vars, kb) => {
+const parsePipeTableRows = (rawText) => {
+  const lines = String(rawText || "").split(/\r?\n/);
+  let headerIdx = -1;
+  for (let i = 0; i < lines.length; i++) {
+    const t = String(lines[i] || "").trim();
+    if (/^\|.+\|$/.test(t)) {
+      const cells = t.replace(/^\|+|\|+$/g, "").split("|").map(s => String(s || "").trim().toLowerCase());
+      if (cells.some(c => c.includes("aspek")) && cells.some(c => c.includes("pernyataan")) && cells.some(c => c.includes("ucapan")) && cells.some(c => c.includes("perilaku"))) {
+        headerIdx = i; break;
+      }
+    }
+  }
+  if (headerIdx < 0) return [];
+  const headerCells = lines[headerIdx].replace(/^\|+|\|+$/g, "").split("|").map(s => String(s || "").trim().toLowerCase());
+  const idxOf = (kw) => headerCells.findIndex(c => c.includes(kw));
+  const jNo = idxOf("no");
+  const jAspek = idxOf("aspek");
+  const jPern = idxOf("pernyataan");
+  const jUcapan = idxOf("ucapan");
+  const jPerilaku = idxOf("perilaku");
+  const jTarget = idxOf("target");
+  const jBukti = idxOf("bukti");
+  const jCatatan = idxOf("catatan");
+  const out = [];
+  for (let i = headerIdx + 1; i < lines.length; i++) {
+    const t = String(lines[i] || "").trim();
+    if (!t || !/^\|.+\|$/.test(t)) break;
+    if (/^\|\s*[-:]+/.test(t)) continue;
+    const cells = t.replace(/^\|+|\|+$/g, "").split("|").map(s => String(s || "").trim());
+    const get = (j) => (j >= 0 && j < cells.length) ? cells[j] : "";
+    out.push({ no: get(jNo), aspek: get(jAspek), pernyataan: get(jPern), ucapan: get(jUcapan), perilaku: get(jPerilaku), target: get(jTarget), bukti: get(jBukti), catatan: get(jCatatan) });
+  }
+  return out;
+};
+
+const writeScenarioSheet = (wb, vars, kb, tableRows) => {
   const ws = wb.addWorksheet("Skenario Uji (Pelanggan)");
   ws.columns = [
-    { header: "Aspek", key: "A", width: 28 },
-    { header: "Pernyataan", key: "B", width: 60 },
-    { header: "Ucapan Pelanggan", key: "C", width: 48 },
-    { header: "Perilaku yang Diharapkan", key: "D", width: 60 },
-    { header: "Target Sederhana", key: "E", width: 40 },
-    { header: "Bukti yang Dicek", key: "F", width: 44 },
-    { header: "Catatan", key: "G", width: 30 },
-    { header: "Skor (1–5)", key: "H", width: 16 }
+    { header: "No", key: "A", width: 6 },
+    { header: "Aspek", key: "B", width: 28 },
+    { header: "Pernyataan", key: "C", width: 60 },
+    { header: "Ucapan Pelanggan", key: "D", width: 48 },
+    { header: "Perilaku yang Diharapkan", key: "E", width: 60 },
+    { header: "Target Sederhana", key: "F", width: 40 },
+    { header: "Bukti yang Dicek", key: "G", width: 44 },
+    { header: "Catatan", key: "H", width: 30 },
+    { header: "Skor (1–5)", key: "I", width: 16 }
   ];
+  let rowNo = 1;
   const add = (aspect, stmt) => {
     const pernyataan = makeAutoVarFormula(stmt);
     const ucapan = pernyataan;
     const perilaku = makeAutoVarFormula("Bot merespons sesuai pernyataan");
     const target = makeAutoVarFormula("Tercapai sesuai definisi");
     const bukti = makeAutoVarFormula("Log/rekaman menunjukkan respons sesuai");
-    ws.addRow({ A: aspect, B: { formula: pernyataan }, C: { formula: ucapan }, D: { formula: perilaku }, E: { formula: target }, F: { formula: bukti }, G: "", H: null });
+    ws.addRow({ A: rowNo++, B: aspect, C: { formula: pernyataan }, D: { formula: ucapan }, E: { formula: perilaku }, F: { formula: target }, G: { formula: bukti }, H: "", I: null });
   };
   add("Latency", "Bot merespons ≤ {{LATENCY_MAX_SEC}} detik.");
   add("Memahami & Mengatasi OOT", "OOT penuh → arahkan ke layanan {{COMPANY_NAME}}.");
@@ -194,21 +231,35 @@ const writeScenarioSheet = (wb, vars, kb) => {
       const perilaku = makeAutoVarFormula(a);
       const target = makeAutoVarFormula(a.length > 80 ? a.slice(0,80) : a);
       const bukti = makeAutoVarFormula("Respons bot sesuai jawaban yang diharapkan");
-      ws.addRow({ A: "Knowledge Base", B: { formula: pernyataan }, C: { formula: pernyataan }, D: { formula: perilaku }, E: { formula: target }, F: { formula: bukti }, G: "", H: null });
+      ws.addRow({ A: rowNo++, B: "Knowledge Base", C: { formula: pernyataan }, D: { formula: pernyataan }, E: { formula: perilaku }, F: { formula: target }, G: { formula: bukti }, H: "", I: null });
+    }
+  }
+  if (Array.isArray(tableRows) && tableRows.length) {
+    for (const r of tableRows) {
+      const noVal = Number(String(r.no || "").replace(/[^0-9]/g, "")) || rowNo;
+      const B = String(r.aspek || "");
+      const C = makeAutoVarFormula(String(r.pernyataan || ""));
+      const D = makeAutoVarFormula(String(r.ucapan || ""));
+      const E = makeAutoVarFormula(String(r.perilaku || ""));
+      const F = makeAutoVarFormula(String(r.target || ""));
+      const G = makeAutoVarFormula(String(r.bukti || ""));
+      const H = String(r.catatan || "");
+      ws.addRow({ A: noVal, B, C: { formula: C }, D: { formula: D }, E: { formula: E }, F: { formula: F }, G: { formula: G }, H, I: null });
+      rowNo = Math.max(rowNo, noVal + 1);
     }
   }
   const last = ws.rowCount;
-  ws.dataValidations.add(`H2:H${last}`, { type: "whole", operator: "between", showErrorMessage: true, formulae: [1, 5] });
-  ws.addRow({ A: null, B: null, C: null, D: null, E: null, F: null, G: "total", H: { formula: `SUM(H2:H${last})` } });
+  ws.dataValidations.add(`I2:I${last}`, { type: "whole", operator: "between", showErrorMessage: true, formulae: [1, 5] });
+  ws.addRow({ A: null, B: null, C: null, D: null, E: null, F: null, G: null, H: "total", I: { formula: `SUM(I2:I${last})` } });
   const avgRowIndex = ws.rowCount + 1;
-  ws.addRow({ A: null, B: null, C: null, D: null, E: null, F: null, G: "avg_score", H: { formula: `AVERAGE(H2:H${last})` } });
-  ws.addRow({ A: null, B: null, C: null, D: null, E: null, F: null, G: "Kesimpulan", H: { formula: `IF(H${avgRowIndex}>3,"Lulus","Gagal")` } });
+  ws.addRow({ A: null, B: null, C: null, D: null, E: null, F: null, G: null, H: "avg_score", I: { formula: `AVERAGE(I2:I${last})` } });
+  ws.addRow({ A: null, B: null, C: null, D: null, E: null, F: null, G: null, H: "Kesimpulan", I: { formula: `IF(I${avgRowIndex}>3,"Lulus","Gagal")` } });
   const aspects = ["Latency","Memahami & Mengatasi OOT","Klarifikasi","Deteksi Bising","Putus Otomatis","Fallback","Sentiment","Durasi Adaptif","Logging"]; 
   for (const ap of aspects) {
     const label = `avg_${ap.toLowerCase().replace(/[^a-z0-9]+/g,"_")}`;
-    ws.addRow({ A: null, B: null, C: null, D: null, E: null, F: null, G: label, H: { formula: `AVERAGEIF(A2:A${last},"${ap}",H2:H${last})` } });
+    ws.addRow({ A: null, B: null, C: null, D: null, E: null, F: null, G: null, H: label, I: { formula: `AVERAGEIF(B2:B${last},"${ap}",I2:I${last})` } });
   }
-  if (Array.isArray(kb) && kb.length) ws.addRow({ A: null, B: null, C: null, D: null, E: null, F: null, G: "avg_knowledge_base", H: { formula: `AVERAGEIF(A2:A${last},"Knowledge Base",H2:H${last})` } });
+  if (Array.isArray(kb) && kb.length) ws.addRow({ A: null, B: null, C: null, D: null, E: null, F: null, G: null, H: "avg_knowledge_base", I: { formula: `AVERAGEIF(B2:B${last},"Knowledge Base",I2:I${last})` } });
   return ws;
 };
 
@@ -227,13 +278,14 @@ export const handler = async (event) => {
     const autovars = parseAutovars(rawText);
     const variables = defaultVariables(assessment, { ...(body.variables || {}), ...autovars });
     const kb = parseKnowledgeBase(rawText);
+    const tableRows = parsePipeTableRows(rawText);
     const wb = new ExcelJS.Workbook();
     wb.creator = toStr(assessment.owner || "");
     wb.created = new Date();
     writeReadmeSheet(wb, variables);
     writeVariablesSheet(wb, variables);
     writeRubricSheet(wb);
-    writeScenarioSheet(wb, variables, kb);
+    writeScenarioSheet(wb, variables, kb, tableRows);
     const buf = await wb.xlsx.writeBuffer();
     const ts = new Date().toISOString().replace(/[:.-]/g, "").slice(0,15);
     const filename = `Scenario_Testing_${ts}.xlsx`;
