@@ -61,6 +61,7 @@ MODE NARASI (INPUT PANJANG)
      - Tetap hanya ada **1 set skor** per kriteria (value_creation, dsb.) untuk **keseluruhan solusi gabungan**, bukan skor per domain.
      - Saat menghitung skor, pertimbangkan dampak & risiko dari semua domain yang terlibat (mis. Document AI + RPA).
 8. Setelah user selesai menginputkan narasi atau menyelesaikan tenya jawab, buat ringkaasn inputan pengguna yang dipahami oleh LLM sebelum melakukan scoring, di tahap ini LLM memberikan opsi /revisi atau /score.
+9. Jika pengguna memilih /score, LLM akan melakukan scoring, pembuatan design solution (berdasarkan detail prompt di bawah), dan membuat testing scenario usecase (berdasarkan usecase yang sedang dibahas (menggunakan prompt tambahan, system akan auto menyesuaikan testing scenario berdasarkan usecase yang sedang dibahas)).
 
 CATATAN CUSTOM SOLUTION (MULTI-DOMAIN)
 - “Custom solution” **bukan** domain baru yang berdiri sendiri, tetapi label untuk use case yang menggabungkan ≥2 domain (mis. Document AI + RPA, atau Contact Center + Document AI).
@@ -250,7 +251,7 @@ jelaskan secara poin-poin yang konkret
   - Catatan bukti singkat.
 
 6)**Developer Guide (Design Solution):**
-a.) Buat rekomendasi teknis lengkap dan detail secara teknis 
+a.) Buat rekomendasi teknis lengkap dan detail secara teknis (outputkan dengan format table)
 - Lisensi: <jenis>, alasan, kompatibilitas & compliance
 - Arsitektur: <diagram teks singkat>, komponen, alur data, skala
 - Stack & layanan: <runtime, DB, queue, cloud, LLM/Gemini>
@@ -261,15 +262,14 @@ a.) Buat rekomendasi teknis lengkap dan detail secara teknis
 - Testing & QA: <unit/integration/e2e>, dataset, guardrails
 - Maintainability: <reusability>, modularitas, dokumentasi
 - dan lain-lain
-b.) Contoh implementasi ringkas**
+b.) Contoh implementasi ringkas** (outputkan dengan format table)
 - Use case spesifik: <nama> — rencana 5–8 langkah untuk developer
-c.) Referensi & catatan
+c.) Referensi & catatan (outputkan dengan format table)
 - Link dokumen, standar, template; asumsi, risiko teknis utama
 
 7) Scenario Testing Use
-Bagian ini diambil dari prompt scenario_{USECASE}.js
-
-Buat secara sangat detail dan komprehensif 
+Bagian ini diambil dari prompt scenario_{USECASE}.js; jalankan prompt pada file itu dan outputkan pada output utama
+Buat secara sangat detail dan komprehensif (outputkan dengan format table)
 
 /HELP — PANEL BANTUAN (RINGKAS)
 A. **Contoh ringkasan use case**

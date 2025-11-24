@@ -55,7 +55,7 @@ export const handler = async (event) => {
         const rest = t.slice(idx + "**developer guide**".length);
         const lines = rest.split(/\n/);
         const out = [];
-        const boundary = /^(\*\*|Use\s*case|Domain|Impact|Feasibility|Total|Priority|Project\s*overview|Rekomendasi\s*jalur|Alasan\s*utama|Top\s*risks|Next\s*steps)/i;
+        const boundary = /^(\*\*|Use\s*case|Domain|Impact|Feasibility|Total|Priority|Project\s*overview|Rekomendasi\s*jalur|Alasan\s*utama|Top\s*risks|Next\s*steps|Scenario\s*Testing(\s*Use(case)?)?)/i;
         for (const line of lines) {
           const s = String(line || "").trim();
           if (!s) break;
@@ -285,16 +285,62 @@ export const handler = async (event) => {
     const mdToHtml = (text) => {
       const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
       const inline = (s) => esc(s).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/\*(.+?)\*/g, "<i>$1</i>").replace(/`([^`]+?)`/g, "<code>$1</code>");
+      const decodeAllowedEntities = (h) => String(h || "").replace(/&lt;\s*(\/)?(ul|ol|li|table|thead|tbody|tr|th|td|caption|p|pre|code|b|strong|i|em|hr|br|a)\b([^>]*)&gt;/gi, '<$1$2$3>');
+      const sanitizeHtmlAllowlist = (html) => {
+        let x = String(html || "");
+        x = decodeAllowedEntities(x);
+        x = x.replace(/<\s*script[\s\S]*?<\/\s*script\s*>/gi, "");
+        x = x.replace(/<\s*style[\s\S]*?<\/\s*style\s*>/gi, "");
+        x = x.replace(/\s+on[a-z]+\s*=\s*"[^"]*"/gi, "");
+        x = x.replace(/\s+on[a-z]+\s*=\s*'[^']*'/gi, "");
+        x = x.replace(/\s+on[a-z]+\s*=\s*[^\s>]+/gi, "");
+        x = x.replace(/\s+style\s*=\s*"[^"]*"/gi, "");
+        x = x.replace(/\s+style\s*=\s*'[^']*'/gi, "");
+        x = x.replace(/\s+style\s*=\s*[^\s>]+/gi, "");
+        x = x.replace(/<\s*a\b([^>]*)>/gi, (m, attrs) => {
+          const hrefMatch = String(attrs || "").match(/\bhref\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))/i);
+          let href = hrefMatch ? (hrefMatch[1] || hrefMatch[2] || hrefMatch[3]) : "";
+          if (!/^https?:\/\//i.test(String(href || ""))) href = "";
+          const safeAttr = href ? ` href="${href}"` : "";
+          return `<a${safeAttr}>`;
+        });
+        x = x.replace(/<\s*\/\s*a\s*>/gi, "</a>");
+        const allowed = /^(?:ul|ol|li|b|strong|i|em|code|pre|table|thead|tbody|tr|th|td|caption|p|br|hr|a)$/;
+        x = x.replace(/<\s*(\/?)([a-z0-9]+)\b([^>]*)>/gi, (m, slash, name, attrs) => {
+          const nm = String(name || "").toLowerCase();
+          if (allowed.test(nm)) {
+            if (nm === "a") return m;
+            return `<${slash}${nm}>`;
+          }
+          return m.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        });
+        x = x.replace(/href\s*=\s*"javascript:[^"]*"/gi, 'href="#"');
+        x = x.replace(/href\s*=\s*'javascript:[^']*'/gi, "href='#'");
+        return x;
+      };
       const lines = String(text || "").split(/\r?\n/);
       let out = [], inUl = false, inOl = false, inCode = false, inTable = false, tableRows = [];
       const isTableLine = (t) => /^\s*\|.*\|\s*$/.test(String(t || ""));
       const isSepLine = (t) => /^\s*\|(?:\s*:?-+:?\s*\|)+\s*$/.test(String(t || ""));
+      const isRawHtmlLine = (t) => /^\s*<\s*(ul|ol|li|table|thead|tbody|tr|th|td|caption|p|pre|code|b|strong|i|em|hr|br|a)\b/i.test(String(t || "")) || /^\s*<\s*\/\s*(ul|ol|li|table|thead|tbody|tr|th|td|caption|p|pre|code)\s*>/i.test(String(t || ""));
       const flushLists = () => { if (inUl) { out.push("</ul>"); inUl = false; } if (inOl) { out.push("</ol>"); inOl = false; } };
       const flushTable = () => {
         if (!tableRows.length) { inTable = false; return; }
         const header = tableRows.length > 1 && isSepLine(tableRows[1]) ? tableRows[0] : null;
         const body = header ? tableRows.slice(2) : tableRows.slice(0);
-        const parseCells = (line) => String(line || "").trim().replace(/^\|+|\|+$/g, "").split("|").map((c) => inline(String(c || "").trim()));
+        const parseCells = (line) => {
+          const parts = String(line || "").trim().replace(/^\|+|\|+$/g, "").split("|");
+          return parts.map((c) => {
+            const cell = String(c || "").trim();
+            const candidate = decodeAllowedEntities(cell);
+            const hasHtml = /<\s*(ul|ol|li|table|thead|tbody|tr|th|td|caption|p|pre|code|b|strong|i|em|hr|br|a)\b/i.test(candidate);
+            if (hasHtml) {
+              const withMd = candidate.replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/\*(.+?)\*/g, "<i>$1</i>").replace(/`([^`]+?)`/g, "<code>$1</code>");
+              return sanitizeHtmlAllowlist(withMd);
+            }
+            return inline(cell);
+          });
+        };
         let html = `<table class="md-table">`;
         if (header) {
           const ths = parseCells(header).map((c) => `<th>${c}</th>`).join("");
@@ -312,13 +358,21 @@ export const handler = async (event) => {
       for (let i = 0; i < lines.length; i++) {
         const raw = lines[i];
         const t = String(raw || "");
-        const trim = t.trim();
+        const dec = decodeAllowedEntities(t);
+        const trim = dec.trim();
         if (/^```/.test(trim)) { if (!inCode) { inCode = true; out.push("<pre><code>"); } else { inCode = false; out.push("</code></pre>"); } continue; }
-        if (inCode) { out.push(esc(t)); continue; }
-        if (isTableLine(t)) { if (!inTable) { flushLists(); inTable = true; tableRows = []; } tableRows.push(t); continue; }
-        if (inTable && !isTableLine(t)) { flushTable(); }
-        if (/^\s*[-•]\s+/.test(t)) { if (!inUl) { if (inOl) { out.push("</ol>"); inOl = false; } inUl = true; out.push("<ul>"); } out.push("<li>" + inline(t.replace(/^\s*[-•]\s+/, "")) + "</li>"); continue; }
-        if (/^\s*\d+\.\s+/.test(t)) { if (!inOl) { if (inUl) { out.push("</ul>"); inUl = false; } inOl = true; out.push("<ol>"); } out.push("<li>" + inline(t.replace(/^\s*\d+\.\s+/, "")) + "</li>"); continue; }
+        if (inCode) { out.push(esc(dec)); continue; }
+        if (isTableLine(dec)) { if (!inTable) { flushLists(); inTable = true; tableRows = []; } tableRows.push(dec); continue; }
+        if (inTable && !isTableLine(dec)) { flushTable(); }
+        if (isRawHtmlLine(dec)) { flushLists(); out.push(sanitizeHtmlAllowlist(dec)); continue; }
+        if (/<\s*(ul|ol|li|table|thead|tbody|tr|th|td|caption|p|pre|code|b|strong|i|em|hr|br|a)\b/i.test(dec)) {
+          flushLists();
+          const withMd = dec.replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/\*(.+?)\*/g, "<i>$1</i>").replace(/`([^`]+?)`/g, "<code>$1</code>");
+          out.push(`<p>${sanitizeHtmlAllowlist(withMd)}</p>`);
+          continue;
+        }
+        if (/^\s*[-•]\s+/.test(dec)) { if (!inUl) { if (inOl) { out.push("</ol>"); inOl = false; } inUl = true; out.push("<ul>"); } out.push("<li>" + inline(dec.replace(/^\s*[-•]\s+/, "")) + "</li>"); continue; }
+        if (/^\s*\d+\.\s+/.test(dec)) { if (!inOl) { if (inUl) { out.push("</ul>"); inUl = false; } inOl = true; out.push("<ol>"); } out.push("<li>" + inline(dec.replace(/^\s*\d+\.\s+/, "")) + "</li>"); continue; }
         flushLists();
         const h = trim.match(/^#{1,4}\s+(.*)$/);
         if (h) { const lvl = (trim.match(/^#{1,4}/)[0].length); out.push(`<h${lvl}>${inline(h[1])}</h${lvl}>`); continue; }
@@ -422,7 +476,9 @@ export const handler = async (event) => {
       const isHeading = (s) => /^\s*\*\*[^*]+\*\*\s*$/.test(s) || /^\s*#{1,6}\s+/.test(s);
       const isScenarioHeading = (s) => {
         const t = String(s || "").trim().toLowerCase();
-        return (isHeading(s) && t.includes("testing scenario")) || /^\s*testing\s*scenario\s*:?/i.test(s);
+        const headingMatch = isHeading(s) && (t.includes("testing scenario") || t.includes("scenario testing") || t.includes("scenario testing use") || t.includes("scenario testing usecase"));
+        const lineMatch = /^\s*(testing\s*scenario|scenario\s*testing(?:\s*use(?:case)?)?)\s*:?/i.test(s);
+        return headingMatch || lineMatch;
       };
       let start = -1;
       for (let i = 0; i < lines.length; i++) {
@@ -430,7 +486,7 @@ export const handler = async (event) => {
         if (isScenarioHeading(s)) { start = i + 1; break; }
       }
       if (start < 0) {
-        // Fallback: find [AUTOVARS] or [KNOWLEDGE BASE]
+        // Fallback: [AUTOVARS] / [KNOWLEDGE BASE]
         for (let i = 0; i < lines.length; i++) {
           const s = String(lines[i] || "").trim();
           if (/^\s*\[AUTOVARS\]/i.test(s) || /^\s*\[KNOWLEDGE\s*BASE\]/i.test(s)) { start = i; break; }
@@ -453,6 +509,24 @@ export const handler = async (event) => {
       const hasKb = /\[KNOWLEDGE\s*BASE\]/i.test(t);
       const hasTable = /\n\s*\|.+\|\s*\n/.test(t);
       return hasAuto || hasKb || hasTable;
+    };
+
+    const findScenarioContent = () => {
+      const fromRaw = extractScenarioBlock(rawText);
+      if (isScenarioValid(fromRaw)) return fromRaw;
+      const conv = Array.isArray(conversation) ? conversation : [];
+      for (let i = conv.length - 1; i >= 0; i--) {
+        const m = conv[i];
+        const t = String(m?.text || "");
+        const b = extractScenarioBlock(t);
+        if (isScenarioValid(b)) return b;
+      }
+      const direct = String(assessment.scenarioText || body.scenario_text || "");
+      if (direct.trim()) {
+        const b2 = extractScenarioBlock(direct) || direct;
+        if (isScenarioValid(b2)) return b2;
+      }
+      return "";
     };
 
     const projectOverviewText = findVal("Project\\s*overview") || findKvFlexible(["project overview","ringkasan proyek"]);
@@ -515,8 +589,8 @@ export const handler = async (event) => {
                 const out = [];
                 for (let j = start; j < lines.length; j++) {
                   const t = String(lines[j] || '').trim();
-                  const isSummary = /^(\s*\*\*\s*(Ringkasan|Alasan|Top\s*risks|Next\s*steps|Tabel\s*Skor|Testing\s*Scenario).*)$/i.test(t)
-                    || /^#{1,6}\s+(Use\s*Case\s*Summary|Usecase\s*Positioning|Solution|Testing\s*Scenario)/i.test(t);
+              const isSummary = /^(\s*\*\*\s*(Ringkasan|Alasan|Top\s*risks|Next\s*steps|Tabel\s*Skor|Testing\s*Scenario|Scenario\s*Testing).*)$/i.test(t)
+                || /^#{1,6}\s+(Use\s*Case\s*Summary|Usecase\s*Positioning|Solution|Testing\s*Scenario|Scenario\s*Testing\s*(Use(case)?)?)/i.test(t);
                   if (isSummary) break;
                   out.push(lines[j]);
                 }
@@ -528,20 +602,28 @@ export const handler = async (event) => {
                 'Top\s*risks',
                 'Next\s*steps',
                 'Tabel\s*Skor\s*&\s*Kontribusi',
-                'Tabel\s*Skor'
+                'Tabel\s*Skor',
+                'Testing\s*Scenario',
+                'Scenario\s*Testing(\s*Use(case)?)?'
               ];
               const base = String(devguideText || block || removeSectionsFlex(rawText, summaryKeys)) || '';
               return `<div class=\"md\">${mdToHtml(sanitizeForPdf(base))}</div>`;
             })()}
           </div>
-      </div>
+        </div>
 
-        ${(() => {
-          const scenarioBlock = extractScenarioBlock(rawText);
-          if (!isScenarioValid(scenarioBlock)) return "";
-          return `\n<div class=\"panel\"><div class=\"panel-header\">Testing Scenario</div><div class=\"panel-body\"><h2 class=\"title\">Testing Scenario — ${useCase} (${domain})</h2><div class=\"md\">${mdToHtml(sanitizeForPdf(scenarioBlock))}</div></div></div>`;
-        })()}
-
+        <div class="panel">
+          <div class="panel-header">Scenario Testing Usecase</div>
+          <div class="panel-body">
+            <h2 class="title">Scenario Testing Usecase — ${useCase} (${domain})</h2>
+            ${(() => {
+              const scenarioBlock = findScenarioContent();
+              if (!isScenarioValid(scenarioBlock)) return `<p style="color:#64748b">Belum tersedia</p>`;
+              const intro = `<p style="font-style: italic; color: #0d47a1;">(Berikut skenario uji yang dapat dijalankan pada fase pilot)</p>`;
+              return intro + `<div class="md">${mdToHtml(sanitizeForPdf(scenarioBlock))}</div>`;
+            })()}
+          </div>
+        </div>
       </body>
       </html>
     `;

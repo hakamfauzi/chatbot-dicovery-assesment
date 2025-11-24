@@ -108,10 +108,15 @@ export const handler = async (event) => {
         if (/proctor/.test(allText)) return "proctoring";
         return "";
       })();
-      const scenarioText = await loadScenarioText(domainGuess);
+      const classifier = classifyUsecase(domainGuess, allText);
+      const requestedNames = detectRequestedScenario(allText);
+      const guard = guardScenarioAccess(classifier, requestedNames, domainGuess);
+      if (!guard.allowed) console.warn(`[SCENARIO AUDIT] access denied: ${guard.reason}`);
+      const scenarioText = guard.allowed ? await loadScenarioText(domainGuess) : "";
       const generic = [
         "Tambahkan bagian '### Testing Scenario' secara otomatis di akhir OUTPUT UTAMA setiap kali /score.",
         "Sajikan dalam teks terstruktur, tanpa Excel, tanpa instruksi tambahan.",
+        "Wajib sertakan [AUTOVARS], [KNOWLEDGE BASE] (10–20 Q→A), dan tabel pipa (No | Aspek | Pernyataan | Ucapan | Perilaku | Target | Bukti | Catatan)."
       ].join("\n");
       if (triggerScore) {
         const directive = [
@@ -148,7 +153,10 @@ export const handler = async (event) => {
     if (triggerScore && !/###\s*Testing\s*Scenario/i.test(finalText)) {
       const mDom = finalText.match(/\bDomain\s*:\s*([^\n]+)\n?/i);
       const domainFromOutput = mDom ? mDom[1] : "";
-      const scenarioText2 = await loadScenarioText(domainFromOutput);
+      const classifier2 = classifyUsecase(domainFromOutput, finalText.toLowerCase());
+      const guard2 = guardScenarioAccess(classifier2, [], domainFromOutput);
+      if (!guard2.allowed) console.warn(`[SCENARIO AUDIT] post-output access denied: ${guard2.reason}`);
+      const scenarioText2 = guard2.allowed ? await loadScenarioText(domainFromOutput) : "";
       if (scenarioText2) {
         const directive2 = [
           "Tambahkan bagian '### Testing Scenario' terintegrasi dalam OUTPUT UTAMA.",
@@ -206,4 +214,62 @@ const loadScenarioText = async (domain) => {
   } catch (_) {
     return "";
   }
+};
+
+const classifyUsecase = (domainGuess, allText) => {
+  const d = String(domainGuess || "").toLowerCase();
+  const t = String(allText || "").toLowerCase();
+  const has = (re) => re.test(d) || re.test(t);
+  if (has(/(contact\s*center|voicebot|chatbot|kms|auto\s*kip)/)) {
+    let subtype = "generic";
+    if (has(/voicebot\s*[-–]\s*inbound|\binbound\b.*voicebot|voicebot.*\binbound\b/)) subtype = "voicebot_inbound";
+    else if (has(/voicebot\s*[-–]\s*outbound|\boutbound\b.*voicebot|voicebot.*\boutbound\b/)) subtype = "voicebot_outbound";
+    else if (has(/\bchatbot\b/)) subtype = "chatbot";
+    else if (has(/kms\s*ai.*stand\s*alone|kms\s*ai.*standalone/)) subtype = "kms_standalone";
+    else if (has(/kms\s*ai.*embedded|\bomni\s*x\b/)) subtype = "kms_embedded";
+    else if (has(/auto\s*kip/)) subtype = "auto_kip";
+    return { category: "voice", subtype };
+  }
+  if (has(/(document\s*ai|extraction|summarization|verification|matching|classification)/)) return { category: "doc_ai", subtype: "" };
+  if (has(/\brpa\b/)) return { category: "rpa", subtype: "" };
+  if (has(/proctor/)) return { category: "proctor", subtype: "" };
+  return { category: "unknown", subtype: "" };
+};
+
+const detectRequestedScenario = (allText) => {
+  const m = String(allText || "").match(/scenario_[a-z0-9_]+\.js/ig);
+  return m ? m.map((x) => x.toLowerCase()) : [];
+};
+
+const isVoiceSubtypeAllowed = (sub) => {
+  return ["voicebot_inbound","voicebot_outbound","chatbot","kms_standalone","kms_embedded","auto_kip","generic"].includes(String(sub || ""));
+};
+
+const guardScenarioAccess = (classifier, requestedNames, domainGuess) => {
+  const deny = (reason) => ({ allowed: false, reason });
+  const allow = () => ({ allowed: true });
+  if (classifier.category === "doc_ai") {
+    const ok = !requestedNames.length || requestedNames.every((n) => n.includes("scenario_document_ai.js"));
+    if (!ok) return deny("Document AI hanya boleh memakai scenario_document_ai.js");
+    return allow();
+  }
+  if (classifier.category === "proctor") {
+    const ok = !requestedNames.length || requestedNames.every((n) => n.includes("scenario_proctoring.js"));
+    if (!ok) return deny("Proctoring hanya boleh memakai scenario_proctoring.js");
+    return allow();
+  }
+  if (classifier.category === "rpa") {
+    const token = process.env.RPA_SCENARIO_TOKEN || "";
+    if (!token) return deny("Otorisasi RPA tidak valid");
+    const ok = !requestedNames.length || requestedNames.every((n) => n.includes("scenario_rpa.js"));
+    if (!ok) return deny("RPA hanya boleh memakai scenario_rpa.js");
+    return allow();
+  }
+  if (classifier.category === "voice") {
+    if (!isVoiceSubtypeAllowed(classifier.subtype)) return deny("Subtype voicebot tidak diizinkan");
+    const ok = !requestedNames.length || requestedNames.every((n) => n.includes("scenario_voicebot.js"));
+    if (!ok) return deny("Voice/KMS/AutoKIP hanya boleh memakai scenario_voicebot.js");
+    return allow();
+  }
+  return deny("Domain tidak dikenali untuk scenario");
 };
