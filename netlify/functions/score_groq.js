@@ -1,5 +1,6 @@
 import { MAIN_PROMPT } from "../prompts/main_prompt.js";
 import { QUESTION_PROMPT } from "../prompts/question_prompt.js";
+import { BVA_PROMPT } from "../prompts/bva_prompt.js";
  
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY || "";
@@ -118,12 +119,27 @@ export const handler = async (event) => {
         "Sajikan dalam teks terstruktur, tanpa Excel, tanpa instruksi tambahan.",
         "Wajib sertakan [AUTOVARS], [KNOWLEDGE BASE] (10–20 Q→A), dan tabel pipa (No | Aspek | Pernyataan | Ucapan | Perilaku | Target | Bukti | Catatan)."
       ].join("\n");
+      const bvaGeneric = [
+        "Tambahkan bagian '### Business Value Assessment (BVA)' terintegrasi dalam OUTPUT UTAMA.",
+        "Gunakan format konsisten dan gaya penulisan yang sama dengan bagian lain.",
+        "Section BVA harus memuat: Ringkasan eksekutif, gambaran As-Is & logic bisnis, value levers + estimasi finansial (Low/Base/High), investasi/biaya & payback, risiko/dependensi/kelayakan, serta rekomendasi & next steps." 
+      ].join("\n");
       if (triggerScore) {
         const directive = [
           generic,
           scenarioText ? "Gunakan skenario berikut sebagai panduan spesifik domain:\n\n" + scenarioText : ""
         ].join("\n\n");
-        if (preludeTexts.length >= 1) preludeTexts.splice(1, 0, directive); else preludeTexts.push(directive);
+        const bvaDirective = [
+          bvaGeneric,
+          BVA_PROMPT ? "Gunakan template BVA berikut sebagai referensi:\n\n" + BVA_PROMPT : ""
+        ].join("\n\n");
+        if (preludeTexts.length >= 1) {
+          preludeTexts.splice(1, 0, directive);
+          preludeTexts.splice(2, 0, bvaDirective);
+        } else {
+          preludeTexts.push(directive);
+          preludeTexts.push(bvaDirective);
+        }
       }
     }
     const preludeUser = preludeTexts.map((t) => ({ role: "user", content: t }));
@@ -172,6 +188,21 @@ export const handler = async (event) => {
           finalText = await callGroqChat(modelId, messages2);
         } catch (_) { /* ignore second-call failure; keep first text */ }
       }
+    }
+    if (triggerScore && !(/###\s*Business\s*Value\s*Assessment\s*\(BVA\)/i.test(finalText) || /###\s*Business\s*Value\s*Analysis\s*\(BVA\)/i.test(finalText) || /###\s*Boundary\s*Value\s*Analysis\s*\(BVA\)/i.test(finalText))) {
+      const bvaDirective2 = [
+        "Tambahkan bagian '### Business Value Assessment (BVA)' terintegrasi dalam OUTPUT UTAMA.",
+        "Gunakan template berikut sebagai acuan dan jaga konsistensi format:",
+        BVA_PROMPT || ""
+      ].join("\n\n");
+      const messagesBva = [
+        ...preludeUser,
+        { role: "assistant", content: finalText },
+        { role: "user", content: bvaDirective2 }
+      ];
+      try {
+        finalText = await callGroqChat(modelId, messagesBva);
+      } catch (_) { /* ignore */ }
     }
 
     return {

@@ -61,7 +61,8 @@ MODE NARASI (INPUT PANJANG)
      - Tetap hanya ada **1 set skor** per kriteria (value_creation, dsb.) untuk **keseluruhan solusi gabungan**, bukan skor per domain.
      - Saat menghitung skor, pertimbangkan dampak & risiko dari semua domain yang terlibat (mis. Document AI + RPA).
 8. Setelah user selesai menginputkan narasi atau menyelesaikan tenya jawab, buat ringkaasn inputan pengguna yang dipahami oleh LLM sebelum melakukan scoring, di tahap ini LLM memberikan opsi /revisi atau /score.
-9. Jika pengguna memilih /score, LLM akan melakukan scoring, pembuatan design solution (berdasarkan detail prompt di bawah), dan membuat testing scenario usecase (berdasarkan usecase yang sedang dibahas (menggunakan prompt tambahan, system akan auto menyesuaikan testing scenario berdasarkan usecase yang sedang dibahas)).
+9. Sebelum melakukan scoring, LLM akan memeriksa apakah pengguna telah menginputkan semua informasi yang diperlukan dan melakukan konfirmasi apa yang ditangkap oleh LLM pada user (secara garis besar).
+10. Jika pengguna memilih /score, LLM akan melakukan scoring.
 
 CATATAN CUSTOM SOLUTION (MULTI-DOMAIN)
 - “Custom solution” **bukan** domain baru yang berdiri sendiri, tetapi label untuk use case yang menggabungkan ≥2 domain (mis. Document AI + RPA, atau Contact Center + Document AI).
@@ -267,8 +268,12 @@ b.) Contoh implementasi ringkas** (outputkan dengan format table)
 c.) Referensi & catatan (outputkan dengan format table)
 - Link dokumen, standar, template; asumsi, risiko teknis utama
 
-7) Scenario Testing Use
+7) USecase Testing Scenario
 Bagian ini diambil dari prompt scenario_{USECASE}.js; jalankan prompt pada file itu dan outputkan pada output utama
+Buat secara sangat detail dan komprehensif (outputkan dengan format table)
+
+7) BVA (Business Value Assesment)
+Bagian ini diambil dari prompt bva_prompt.js; jalankan prompt pada file itu dan outputkan pada output utama
 Buat secara sangat detail dan komprehensif (outputkan dengan format table)
 
 /HELP — PANEL BANTUAN (RINGKAS)

@@ -471,6 +471,7 @@ export const handler = async (event) => {
       return "";
     };
 
+    // Ekstraksi blok Testing Scenario dari teks (heading atau penanda khusus)
     const extractScenarioBlock = (text) => {
       const lines = String(text || "").split(/\r?\n/);
       const isHeading = (s) => /^\s*\*\*[^*]+\*\*\s*$/.test(s) || /^\s*#{1,6}\s+/.test(s);
@@ -502,6 +503,7 @@ export const handler = async (event) => {
       return out.join("\n");
     };
 
+    // Validasi sederhana agar konten scenario tidak kosong dan berformat
     const isScenarioValid = (text) => {
       const t = String(text || "");
       if (!t.trim()) return false;
@@ -511,6 +513,7 @@ export const handler = async (event) => {
       return hasAuto || hasKb || hasTable;
     };
 
+    // Sumber konten scenario: rawText → conversation → field langsung
     const findScenarioContent = () => {
       const fromRaw = extractScenarioBlock(rawText);
       if (isScenarioValid(fromRaw)) return fromRaw;
@@ -527,6 +530,68 @@ export const handler = async (event) => {
         if (isScenarioValid(b2)) return b2;
       }
       return "";
+    };
+
+    // Ekstraksi blok Business Value Assessment (BVA)
+    const extractBvaBlock = (text) => {
+      const lines = String(text || "").split(/\r?\n/);
+      const isHeading = (s) => /^\s*\*\*[^*]+\*\*\s*$/.test(s) || /^\s*#{1,6}\s+/.test(s);
+      const isBvaHeading = (s) => {
+        const t = String(s || "").trim().toLowerCase();
+        const headingMatch = isHeading(s) && (t.includes("business value assessment") || t.includes("business value analysis") || /\bbva\b/.test(t));
+        const lineMatch = /^\s*(business\s*value\s*(assessment|analysis)|bva)\s*:?/i.test(s);
+        return headingMatch || lineMatch;
+      };
+      const isOtherPanelHeading = (s) => {
+        const tt = String(s || "").trim().toLowerCase();
+        return isHeading(s) && (/use\s*case\s*summary|usecase\s*positioning|design\s*solution|testing\s*scenario|scenario\s*testing(\s*use(case)?)?/i.test(tt));
+      };
+      let start = -1;
+      for (let i = 0; i < lines.length; i++) {
+        const s = String(lines[i] || "").trim();
+        if (isBvaHeading(s)) { start = i + 1; break; }
+      }
+      if (start < 0) {
+        const tbl = extractFirstMarkdownTable(text);
+        if (tbl) return tbl;
+      }
+      if (start < 0) return "";
+      const out = [];
+      for (let j = start; j < lines.length; j++) {
+        const t = String(lines[j] || "").trim();
+        if (isOtherPanelHeading(t)) break;
+        out.push(lines[j]);
+      }
+      return out.join("\n");
+    };
+
+    // Validasi sederhana konten BVA
+    const isBvaValid = (text) => {
+      const t = String(text || "").trim();
+      return !!t;
+    };
+
+    // Sumber konten BVA: rawText → conversation → field langsung
+    const findBvaContent = () => {
+      try {
+        const fromRaw = extractBvaBlock(rawText);
+        if (isBvaValid(fromRaw)) return fromRaw;
+        const conv = Array.isArray(conversation) ? conversation : [];
+        for (let i = conv.length - 1; i >= 0; i--) {
+          const m = conv[i];
+          const t = String(m?.text || "");
+          const b = extractBvaBlock(t);
+          if (isBvaValid(b)) return b;
+        }
+        const direct = String(assessment.bvaText || body.bva_text || "");
+        if (direct.trim()) {
+          const b2 = extractBvaBlock(direct) || direct;
+          if (isBvaValid(b2)) return b2;
+        }
+        return "";
+      } catch (_) {
+        return "";
+      }
     };
 
     const projectOverviewText = findVal("Project\\s*overview") || findKvFlexible(["project overview","ringkasan proyek"]);
@@ -589,8 +654,8 @@ export const handler = async (event) => {
                 const out = [];
                 for (let j = start; j < lines.length; j++) {
                   const t = String(lines[j] || '').trim();
-              const isSummary = /^(\s*\*\*\s*(Ringkasan|Alasan|Top\s*risks|Next\s*steps|Tabel\s*Skor|Testing\s*Scenario|Scenario\s*Testing).*)$/i.test(t)
-                || /^#{1,6}\s+(Use\s*Case\s*Summary|Usecase\s*Positioning|Solution|Testing\s*Scenario|Scenario\s*Testing\s*(Use(case)?)?)/i.test(t);
+                  const isSummary = /^(\s*\*\*\s*(Ringkasan|Alasan|Top\s*risks|Next\s*steps|Tabel\s*Skor|Testing\s*Scenario|Scenario\s*Testing|Business\s*Value\s*(Assessment|Analysis)).*)$/i.test(t)
+                    || /^#{1,6}\s+(Use\s*Case\s*Summary|Usecase\s*Positioning|Solution|Testing\s*Scenario|Scenario\s*Testing\s*(Use(case)?)?|Business\s*Value\s*(Assessment|Analysis)\s*(\(BVA\))?)/i.test(t);
                   if (isSummary) break;
                   out.push(lines[j]);
                 }
@@ -604,7 +669,10 @@ export const handler = async (event) => {
                 'Tabel\s*Skor\s*&\s*Kontribusi',
                 'Tabel\s*Skor',
                 'Testing\s*Scenario',
-                'Scenario\s*Testing(\s*Use(case)?)?'
+                'Scenario\s*Testing(\s*Use(case)?)?',
+                'Business\s*Value\s*Assessment',
+                'Business\s*Value\s*Analysis',
+                '\(BVA\)'
               ];
               const base = String(devguideText || block || removeSectionsFlex(rawText, summaryKeys)) || '';
               return `<div class=\"md\">${mdToHtml(sanitizeForPdf(base))}</div>`;
@@ -624,6 +692,20 @@ export const handler = async (event) => {
             })()}
           </div>
         </div>
+
+        <div class="panel">
+          <div class="panel-header">Business Value Assessment</div>
+          <div class="panel-body">
+            <h2 class="title">Business Value Assessment — ${useCase} (${domain})</h2>
+            ${(() => {
+              const bvaBlock = findBvaContent();
+              if (!isBvaValid(bvaBlock)) return `<p style="color:#64748b">Belum tersedia</p>`;
+              const intro = `<p style=\"font-style: italic; color: #0d47a1;\">(Analisis nilai bisnis berdasar hasil assessment)</p>`;
+              return intro + `<div class=\"md\">${mdToHtml(sanitizeForPdf(bvaBlock))}</div>`;
+            })()}
+          </div>
+        </div>
+
       </body>
       </html>
     `;

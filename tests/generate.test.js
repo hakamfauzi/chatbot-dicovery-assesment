@@ -133,3 +133,28 @@ test('generate: header "## Scenario Testing Use" terdeteksi sebagai scenario', a
   expect(parts[0]).toMatch(/<div class="panel-header">Design Solution<\/div>/);
   expect(parts[0]).not.toMatch(/Scenario Testing Use/);
 });
+
+test('generate: panel Business Value Assessment menampilkan konten dari rawText', async () => {
+  const { handler } = await importGenerate();
+  const rawText = [
+    '**Developer Guide**',
+    'Desain sistem...',
+    '## Business Value Assessment (BVA)',
+    '| Value Lever | Formula (kata-kata) | Low | Base | High | Sumber |',
+    '|-------------|----------------------|-----|------|------|--------|',
+    '| Penghematan FTE | (FTE dikurangi × biaya/FTE) | 1 | 2 | 3 | Asumsi |'
+  ].join('\n');
+  const res = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({ format: 'html', assessment: { use_case_name: 'Case BVA', domain: 'RPA', impact: 10, feasibility: 20, total: 30, priority: 'Quick', rawText } })
+  });
+  expect(res.statusCode).toBe(200);
+  const html = String(res.body || '');
+  expect(html).toMatch(/<div class="panel-header">Business Value Assessment<\/div>/);
+  expect(html).toMatch(/<h2 class="title">Business Value Assessment — Case BVA \(RPA\)<\/h2>/);
+  expect(html).toMatch(/<table/);
+  // Pastikan BVA tidak tercampur di Design Solution
+  const parts = html.split('<div class="panel-header">Business Value Assessment</div>');
+  expect(parts[0]).toMatch(/<div class="panel-header">Design Solution<\/div>/);
+  expect(parts[0]).not.toMatch(/Business Value Assessment/);
+});
