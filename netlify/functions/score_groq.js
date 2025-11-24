@@ -1,6 +1,6 @@
 import { MAIN_PROMPT } from "../prompts/main_prompt.js";
 import { QUESTION_PROMPT } from "../prompts/question_prompt.js";
-import { DEVGUIDE_PROMPT } from "../prompts/devguide_prompt.js";
+ 
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY || "";
 
@@ -92,11 +92,35 @@ export const handler = async (event) => {
     const flow = String(body.flow || "").toLowerCase();
     const wantsQna = flow === "qna" || !!(body.modules && body.modules.questions) || JSON.stringify(body.messages || "").toLowerCase().includes("/qna");
     const assessmentDone = body.assessmentComplete === true;
-    const wantsDevguide = (flow === "devguide" || JSON.stringify(body.messages || "").toLowerCase().includes("/devguide") || body.devguide === true) && assessmentDone;
+    const allText = JSON.stringify(body.messages || "").toLowerCase();
+    const triggerScore = assessmentDone || /\b\/score\b/.test(allText) || flow === "score";
     const preludeTexts = [];
     if (MAIN_PROMPT) preludeTexts.push(MAIN_PROMPT);
     if (wantsQna && QUESTION_PROMPT) preludeTexts.push(QUESTION_PROMPT);
-    if (wantsDevguide && DEVGUIDE_PROMPT) preludeTexts.push(DEVGUIDE_PROMPT);
+    
+    {
+      const domainGuess = String(body?.assessment?.domain || body?.domain || "").trim() || (() => {
+        const m = allText.match(/domain\s*:\s*([^\n]+)\n?/i);
+        if (m) return m[1];
+        if (/contact\s*center|voicebot|chatbot|kms|auto\s*kip/.test(allText)) return "contact center";
+        if (/document\s*ai|extraction|summarization|verification|matching|classification/.test(allText)) return "document ai";
+        if (/\brpa\b/.test(allText)) return "rpa";
+        if (/proctor/.test(allText)) return "proctoring";
+        return "";
+      })();
+      const scenarioText = await loadScenarioText(domainGuess);
+      const generic = [
+        "Tambahkan bagian '### Testing Scenario' secara otomatis di akhir OUTPUT UTAMA setiap kali /score.",
+        "Sajikan dalam teks terstruktur, tanpa Excel, tanpa instruksi tambahan.",
+      ].join("\n");
+      if (triggerScore) {
+        const directive = [
+          generic,
+          scenarioText ? "Gunakan skenario berikut sebagai panduan spesifik domain:\n\n" + scenarioText : ""
+        ].join("\n\n");
+        if (preludeTexts.length >= 1) preludeTexts.splice(1, 0, directive); else preludeTexts.push(directive);
+      }
+    }
     const preludeUser = preludeTexts.map((t) => ({ role: "user", content: t }));
     let messages = [...preludeUser, ...baseMessages];
     if (body.modules && body.modules.qna) {
@@ -120,11 +144,32 @@ export const handler = async (event) => {
 
     const modelId = String(process.env.GROQ_MODEL || "openai/gpt-oss-120b");
     const text = await callGroqChat(modelId, messages);
+    let finalText = text;
+    if (triggerScore && !/###\s*Testing\s*Scenario/i.test(finalText)) {
+      const mDom = finalText.match(/\bDomain\s*:\s*([^\n]+)\n?/i);
+      const domainFromOutput = mDom ? mDom[1] : "";
+      const scenarioText2 = await loadScenarioText(domainFromOutput);
+      if (scenarioText2) {
+        const directive2 = [
+          "Tambahkan bagian '### Testing Scenario' terintegrasi dalam OUTPUT UTAMA.",
+          "Format: header '### Testing Scenario', lalu blok [AUTOVARS], [KNOWLEDGE BASE] (10–20 Q→A), dan tabel pipa (No | Aspek | Pernyataan | Ucapan | Perilaku | Target | Bukti | Catatan).",
+          "Gunakan skenario berikut sebagai panduan spesifik domain:\n\n" + scenarioText2
+        ].join("\n\n");
+        const messages2 = [
+          ...preludeUser,
+          { role: "assistant", content: finalText },
+          { role: "user", content: directive2 }
+        ];
+        try {
+          finalText = await callGroqChat(modelId, messages2);
+        } catch (_) { /* ignore second-call failure; keep first text */ }
+      }
+    }
 
     return {
       statusCode: 200,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: text, model: modelId })
+      body: JSON.stringify({ message: finalText, model: modelId })
     };
   } catch (error) {
     const details = error?.message || String(error);
@@ -135,5 +180,30 @@ export const handler = async (event) => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ error: "Terjadi kesalahan di layanan model.", details, status: statusCode })
     };
+  }
+};
+
+const selectScenarioFileByDomain = (domain) => {
+  const d = String(domain || "").toLowerCase();
+  const hasVoice = /(contact\s*center|voicebot|chatbot|kms|auto\s*kip)/.test(d);
+  const hasDoc = /(document\s*ai|extraction|summarization|verification|matching|classification)/.test(d);
+  const hasRpa = /\brpa\b/.test(d);
+  const hasProc = /proctor/.test(d);
+  if (hasVoice) return "../prompts/scenario_voicebot.js";
+  if (hasDoc) return "../prompts/scenario_document_ai.js";
+  if (hasRpa) return "../prompts/scenario_rpa.js";
+  if (hasProc) return "../prompts/scenario_proctoring.js";
+  return "";
+};
+
+const loadScenarioText = async (domain) => {
+  const path = selectScenarioFileByDomain(domain);
+  if (!path) return "";
+  try {
+    const mod = await import(path);
+    const txt = Object.values(mod).find((v) => typeof v === "string") || "";
+    return String(txt || "");
+  } catch (_) {
+    return "";
   }
 };

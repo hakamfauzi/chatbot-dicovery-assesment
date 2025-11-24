@@ -417,6 +417,44 @@ export const handler = async (event) => {
       return "";
     };
 
+    const extractScenarioBlock = (text) => {
+      const lines = String(text || "").split(/\r?\n/);
+      const isHeading = (s) => /^\s*\*\*[^*]+\*\*\s*$/.test(s) || /^\s*#{1,6}\s+/.test(s);
+      const isScenarioHeading = (s) => {
+        const t = String(s || "").trim().toLowerCase();
+        return (isHeading(s) && t.includes("testing scenario")) || /^\s*testing\s*scenario\s*:?/i.test(s);
+      };
+      let start = -1;
+      for (let i = 0; i < lines.length; i++) {
+        const s = String(lines[i] || "").trim();
+        if (isScenarioHeading(s)) { start = i + 1; break; }
+      }
+      if (start < 0) {
+        // Fallback: find [AUTOVARS] or [KNOWLEDGE BASE]
+        for (let i = 0; i < lines.length; i++) {
+          const s = String(lines[i] || "").trim();
+          if (/^\s*\[AUTOVARS\]/i.test(s) || /^\s*\[KNOWLEDGE\s*BASE\]/i.test(s)) { start = i; break; }
+        }
+      }
+      if (start < 0) return "";
+      const out = [];
+      for (let j = start; j < lines.length; j++) {
+        const t = String(lines[j] || "").trim();
+        if (isHeading(t) && !isScenarioHeading(t)) break;
+        out.push(lines[j]);
+      }
+      return out.join("\n");
+    };
+
+    const isScenarioValid = (text) => {
+      const t = String(text || "");
+      if (!t.trim()) return false;
+      const hasAuto = /\[AUTOVARS\]/i.test(t);
+      const hasKb = /\[KNOWLEDGE\s*BASE\]/i.test(t);
+      const hasTable = /\n\s*\|.+\|\s*\n/.test(t);
+      return hasAuto || hasKb || hasTable;
+    };
+
     const projectOverviewText = findVal("Project\\s*overview") || findKvFlexible(["project overview","ringkasan proyek"]);
     const projectOwnerText = findOwner() || String(profile.owner || "");
 
@@ -477,8 +515,8 @@ export const handler = async (event) => {
                 const out = [];
                 for (let j = start; j < lines.length; j++) {
                   const t = String(lines[j] || '').trim();
-                  const isSummary = /^(\s*\*\*\s*(Ringkasan|Alasan|Top\s*risks|Next\s*steps|Tabel\s*Skor).*)$/i.test(t)
-                    || /^#{1,6}\s+(Use\s*Case\s*Summary|Usecase\s*Positioning|Solution)/i.test(t);
+                  const isSummary = /^(\s*\*\*\s*(Ringkasan|Alasan|Top\s*risks|Next\s*steps|Tabel\s*Skor|Testing\s*Scenario).*)$/i.test(t)
+                    || /^#{1,6}\s+(Use\s*Case\s*Summary|Usecase\s*Positioning|Solution|Testing\s*Scenario)/i.test(t);
                   if (isSummary) break;
                   out.push(lines[j]);
                 }
@@ -496,7 +534,14 @@ export const handler = async (event) => {
               return `<div class=\"md\">${mdToHtml(sanitizeForPdf(base))}</div>`;
             })()}
           </div>
-        </div>
+      </div>
+
+        ${(() => {
+          const scenarioBlock = extractScenarioBlock(rawText);
+          if (!isScenarioValid(scenarioBlock)) return "";
+          return `\n<div class=\"panel\"><div class=\"panel-header\">Testing Scenario</div><div class=\"panel-body\"><h2 class=\"title\">Testing Scenario — ${useCase} (${domain})</h2><div class=\"md\">${mdToHtml(sanitizeForPdf(scenarioBlock))}</div></div></div>`;
+        })()}
+
       </body>
       </html>
     `;
