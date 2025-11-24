@@ -115,7 +115,7 @@ Kelompokkan benefit menjadi 4 (gunakan hanya yang relevan untuk use case):
 
 Untuk setiap value lever yang relevan, buat tabel:
 
-   | Value Lever        | Formula (kata-kata)                                            | Low (per tahun) | Base (per tahun) | High (per tahun) | Sumber Angka (Data/Asumsi) |
+   | Vaalue Lever        | Formula (kata-kata)                                            | Low (per tahun) | Base (per tahun) | High (per tahun) | Sumber Angka (Data/Asumsi) |
    |--------------------|----------------------------------------------------------------|-----------------|------------------|------------------|-----------------------------|
    | Penghematan FTE    | (FTE dikurangi × biaya/FTE)                                    | …               | …                | …                | …                           |
    | Pengurangan error  | (error dikurangi × biaya per error)                            | …               | …                | …                | …                           |
