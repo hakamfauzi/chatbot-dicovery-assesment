@@ -505,12 +505,14 @@ export const handler = async (event) => {
 
     // Validasi sederhana agar konten scenario tidak kosong dan berformat
     const isScenarioValid = (text) => {
-      const t = String(text || "");
-      if (!t.trim()) return false;
-      const hasAuto = /\[AUTOVARS\]/i.test(t);
-      const hasKb = /\[KNOWLEDGE\s*BASE\]/i.test(t);
-      const hasTable = /\n\s*\|.+\|\s*\n/.test(t);
-      return hasAuto || hasKb || hasTable;
+      // const t = String(text || "");
+      // if (!t.trim()) return false;
+      // const hasAuto = /\[AUTOVARS\]/i.test(t);
+      // const hasKb = /\[KNOWLEDGE\s*BASE\]/i.test(t);
+      // const hasTable = /\n\s*\|.+\|\s*\n/.test(t);
+      // return hasAuto || hasKb || hasTable;
+      const t = String(text || "").trim();
+      return !!t;
     };
 
     // Sumber konten scenario: rawText → conversation → field langsung
@@ -565,30 +567,21 @@ export const handler = async (event) => {
     };
 
     const findDevguideContent = () => {
-      const srcConv = Array.isArray(conversation) ? conversation : [];
-      if (String(devguideText || "").trim()) return stripMetadataLines(devguideText);
       const fromRaw = extractDevguideBlock(rawText);
-      if (String(fromRaw || "").trim()) return stripMetadataLines(fromRaw);
-      const aa = [...srcConv].reverse().find(x => x.role === "assistant" && /developer\s*guide|design\s*solution/i.test(String(x?.text || "")));
-      if (aa) {
-        const b = extractDevguideBlock(String(aa.text || "")) || String(aa.text || "");
-        if (String(b || "").trim()) return stripMetadataLines(b);
+      if (isDevguideValid(fromRaw)) return fromRaw;
+      const conv = Array.isArray(conversation) ? conversation : [];
+      for (let i = conv.length - 1; i >= 0; i--) {
+        const m = conv[i];
+        const t = String(m?.text || "");
+        const b = extractDevguideBlock(t);
+        if (isDevguideValid(b)) return b;
       }
-      const cleaned = removeSectionsFlex(rawText, [
-        'Ringkasan\s*&\s*Keputusan',
-        'Alasan\s*utama',
-        'Top\s*risks',
-        'Next\s*steps',
-        'Tabel\s*Skor\s*&\s*Kontribusi',
-        'Tabel\s*Skor',
-        'Testing\s*Scenario',
-        'Scenario\s*Testing(\s*Use(case)?)?',
-        'Usecase\s*Testing\s*Scenario',
-        'Business\s*Value\s*Assessment',
-        'Business\s*Value\s*Analysis',
-        '\\(BVA\\)'
-      ]);
-      return stripMetadataLines(cleaned);
+      const direct = String(assessment.devguide_text || body.devguide_text || "");
+      if (direct.trim()) {
+        const b2 = extractDevguideBlock(direct) || direct;
+        if (isDevguideValid(b2)) return b2;
+      }
+      return "";
     };
 
     const isDevguideValid = (text) => {
@@ -707,38 +700,6 @@ export const handler = async (event) => {
           <div class="panel-body">
             <h2 class="title">Design Solution</h2>
             ${(() => {
-              const lines = String(rawText || '').split(/\r?\n/);
-              let start = -1;
-              for (let i = 0; i < lines.length; i++) {
-                const s = String(lines[i] || '').trim();
-                if (isDGHeading(s) || /developer\s*guide/i.test(s) || /design\s*solution/i.test(s)) { start = i; break; }
-              }
-              let block = '';
-              if (start >= 0) {
-                const out = [];
-                for (let j = start; j < lines.length; j++) {
-                  const t = String(lines[j] || '').trim();
-                  const isSummary = /^(\s*\*\*\s*(Ringkasan|Alasan|Top\s*risks|Next\s*steps|Tabel\s*Skor|Testing\s*Scenario|Scenario\s*Testing|Usecase\s*Testing\s*Scenario|Business\s*Value\s*(Assessment|Analysis)).*)$/i.test(t)
-                    || /^#{1,6}\s+(Use\s*Case\s*Summary|Usecase\s*Positioning|Solution|Testing\s*Scenario|Scenario\s*Testing\s*(Use(case)?)?|Usecase\s*Testing\s*Scenario|Business\s*Value\s*(Assessment|Analysis)\s*(\(BVA\))?)/i.test(t);
-                  if (isSummary) break;
-                  out.push(lines[j]);
-                }
-                block = out.join('\n');
-              }
-              const summaryKeys = [
-                'Ringkasan\s*&\s*Keputusan',
-                'Alasan\s*utama',
-                'Top\s*risks',
-                'Next\s*steps',
-                'Tabel\s*Skor\s*&\s*Kontribusi',
-                'Tabel\s*Skor',
-                'Testing\s*Scenario',
-                'Scenario\s*Testing(\s*Use(case)?)?',
-                'Usecase\s*Testing\s*Scenario',
-                'Business\s*Value\s*Assessment',
-                'Business\s*Value\s*Analysis',
-                '\(BVA\)'
-              ];
               const ds = findDevguideContent();
               if (!isDevguideValid(ds)) return `<p style=\"color:#64748b\">Belum tersedia</p>`;
               return `<div class=\"md\">${mdToHtml(sanitizeForPdf(ds))}</div>`;
@@ -747,9 +708,9 @@ export const handler = async (event) => {
         </div>
 
         <div class="panel">
-          <div class="panel-header">Scenario Testing Usecase</div>
+          <div class="panel-header">Usecase Testing Scenario</div>
           <div class="panel-body">
-            <h2 class="title">Scenario Testing Usecase — ${useCase} (${domain})</h2>
+            <h2 class="title">Usecase Testing Scenario</h2>
             ${(() => {
               const scenarioBlock = findScenarioContent();
               if (!isScenarioValid(scenarioBlock)) return `<p style="color:#64748b">Belum tersedia</p>`;
