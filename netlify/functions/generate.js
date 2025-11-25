@@ -26,7 +26,7 @@ export const handler = async (event) => {
     const rawText = String(assessment.rawText || body.rawText || "");
     const conversation = Array.isArray(body.conversation) ? body.conversation : [];
     const devguideText = (() => {
-      const t = String(body.devguide_text || "");
+      const t = String(assessment.devguide_text || body.devguide_text || "");
       if (t.trim()) return t;
       const conv = Array.isArray(conversation) ? conversation : [];
       if (conv.length) {
@@ -474,10 +474,10 @@ export const handler = async (event) => {
     // Ekstraksi blok Testing Scenario dari teks (heading atau penanda khusus)
     const extractScenarioBlock = (text) => {
       const lines = String(text || "").split(/\r?\n/);
-      const isHeading = (s) => /^\s*\*\*[^*]+\*\*\s*$/.test(s) || /^\s*#{1,6}\s+/.test(s);
+      const isHeading = (s) => /^\s*\*\*[^*]+\*\*\s*$/.test(s) || /^\s*#{1,6}\s*/.test(s);
       const isScenarioHeading = (s) => {
         const t = String(s || "").trim().toLowerCase();
-        const headingMatch = isHeading(s) && (t.includes("testing scenario") || t.includes("scenario testing") || t.includes("scenario testing use") || t.includes("scenario testing usecase"));
+        const headingMatch = (isHeading(s) && (t.includes("testing scenario") || t.includes("scenario testing") || t.includes("scenario testing use") || t.includes("scenario testing usecase"))) || /^\s*#{1,6}\s*testing\s*scenario\b/i.test(s);
         const lineMatch = /^\s*(testing\s*scenario|scenario\s*testing(?:\s*use(?:case)?)?)\s*:?/i.test(s);
         return headingMatch || lineMatch;
       };
@@ -530,6 +530,70 @@ export const handler = async (event) => {
         if (isScenarioValid(b2)) return b2;
       }
       return "";
+    };
+
+    const stripMetadataLines = (text) => {
+      const lines = String(text || "").split(/\r?\n/);
+      const re = /^(Use\s*case|Domain|Impact|Feasibility|Total|Priority|Project\s*overview|Project\s*owner|Owner\s*project)\s*[:\-–—]/i;
+      return lines.filter((l) => !re.test(String(l || "").trim())).join("\n");
+    };
+
+    const extractDevguideBlock = (text) => {
+      const lines = String(text || "").split(/\r?\n/);
+      const isHeading = (s) => /^\s*\*\*[^*]+\*\*\s*$/.test(s) || /^\s*#{1,6}\s+/.test(s);
+      const isDGHead = (s) => {
+        const t = String(s || "").trim().toLowerCase();
+        return isHeading(s) && (t.includes("developer guide") || t.includes("design solution") || t.includes("solution"));
+      };
+      const isOtherPanel = (s) => {
+        const t = String(s || "").trim().toLowerCase();
+        return isHeading(s) && (/use\s*case\s*summary|usecase\s*positioning|testing\s*scenario|scenario\s*testing(\s*use(case)?)?|business\s*value\s*(assessment|analysis)/i.test(t));
+      };
+      let start = -1;
+      for (let i = 0; i < lines.length; i++) {
+        const s = String(lines[i] || "").trim();
+        if (isDGHead(s) || /developer\s*guide/i.test(s) || /design\s*solution/i.test(s)) { start = i + 1; break; }
+      }
+      if (start < 0) return "";
+      const out = [];
+      for (let j = start; j < lines.length; j++) {
+        const t = String(lines[j] || "").trim();
+        if (isOtherPanel(t)) break;
+        out.push(lines[j]);
+      }
+      return out.join("\n");
+    };
+
+    const findDevguideContent = () => {
+      const srcConv = Array.isArray(conversation) ? conversation : [];
+      if (String(devguideText || "").trim()) return stripMetadataLines(devguideText);
+      const fromRaw = extractDevguideBlock(rawText);
+      if (String(fromRaw || "").trim()) return stripMetadataLines(fromRaw);
+      const aa = [...srcConv].reverse().find(x => x.role === "assistant" && /developer\s*guide|design\s*solution/i.test(String(x?.text || "")));
+      if (aa) {
+        const b = extractDevguideBlock(String(aa.text || "")) || String(aa.text || "");
+        if (String(b || "").trim()) return stripMetadataLines(b);
+      }
+      const cleaned = removeSectionsFlex(rawText, [
+        'Ringkasan\s*&\s*Keputusan',
+        'Alasan\s*utama',
+        'Top\s*risks',
+        'Next\s*steps',
+        'Tabel\s*Skor\s*&\s*Kontribusi',
+        'Tabel\s*Skor',
+        'Testing\s*Scenario',
+        'Scenario\s*Testing(\s*Use(case)?)?',
+        'Usecase\s*Testing\s*Scenario',
+        'Business\s*Value\s*Assessment',
+        'Business\s*Value\s*Analysis',
+        '\\(BVA\\)'
+      ]);
+      return stripMetadataLines(cleaned);
+    };
+
+    const isDevguideValid = (text) => {
+      const t = String(text || "").trim();
+      return !!t;
     };
 
     // Ekstraksi blok Business Value Assessment (BVA)
@@ -641,7 +705,7 @@ export const handler = async (event) => {
         <div class="panel">
           <div class="panel-header">Design Solution</div>
           <div class="panel-body">
-            <h2 class="title">Design Solution — ${useCase} (${domain})</h2>
+            <h2 class="title">Design Solution</h2>
             ${(() => {
               const lines = String(rawText || '').split(/\r?\n/);
               let start = -1;
@@ -654,8 +718,8 @@ export const handler = async (event) => {
                 const out = [];
                 for (let j = start; j < lines.length; j++) {
                   const t = String(lines[j] || '').trim();
-                  const isSummary = /^(\s*\*\*\s*(Ringkasan|Alasan|Top\s*risks|Next\s*steps|Tabel\s*Skor|Testing\s*Scenario|Scenario\s*Testing|Business\s*Value\s*(Assessment|Analysis)).*)$/i.test(t)
-                    || /^#{1,6}\s+(Use\s*Case\s*Summary|Usecase\s*Positioning|Solution|Testing\s*Scenario|Scenario\s*Testing\s*(Use(case)?)?|Business\s*Value\s*(Assessment|Analysis)\s*(\(BVA\))?)/i.test(t);
+                  const isSummary = /^(\s*\*\*\s*(Ringkasan|Alasan|Top\s*risks|Next\s*steps|Tabel\s*Skor|Testing\s*Scenario|Scenario\s*Testing|Usecase\s*Testing\s*Scenario|Business\s*Value\s*(Assessment|Analysis)).*)$/i.test(t)
+                    || /^#{1,6}\s+(Use\s*Case\s*Summary|Usecase\s*Positioning|Solution|Testing\s*Scenario|Scenario\s*Testing\s*(Use(case)?)?|Usecase\s*Testing\s*Scenario|Business\s*Value\s*(Assessment|Analysis)\s*(\(BVA\))?)/i.test(t);
                   if (isSummary) break;
                   out.push(lines[j]);
                 }
@@ -670,12 +734,14 @@ export const handler = async (event) => {
                 'Tabel\s*Skor',
                 'Testing\s*Scenario',
                 'Scenario\s*Testing(\s*Use(case)?)?',
+                'Usecase\s*Testing\s*Scenario',
                 'Business\s*Value\s*Assessment',
                 'Business\s*Value\s*Analysis',
                 '\(BVA\)'
               ];
-              const base = String(devguideText || block || removeSectionsFlex(rawText, summaryKeys)) || '';
-              return `<div class=\"md\">${mdToHtml(sanitizeForPdf(base))}</div>`;
+              const ds = findDevguideContent();
+              if (!isDevguideValid(ds)) return `<p style=\"color:#64748b\">Belum tersedia</p>`;
+              return `<div class=\"md\">${mdToHtml(sanitizeForPdf(ds))}</div>`;
             })()}
           </div>
         </div>

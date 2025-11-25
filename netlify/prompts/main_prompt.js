@@ -268,11 +268,11 @@ b.) Contoh implementasi ringkas** (outputkan dengan format table)
 c.) Referensi & catatan (outputkan dengan format table)
 - Link dokumen, standar, template; asumsi, risiko teknis utama
 
-7) USecase Testing Scenario
+7) Usecase Testing Scenario
 Bagian ini diambil dari prompt scenario_{USECASE}.js; jalankan prompt pada file itu dan outputkan pada output utama
 Buat secara sangat detail dan komprehensif (outputkan dengan format table)
 
-7) BVA (Business Value Assesment)
+8) BVA (Business Value Assesment)
 Bagian ini diambil dari prompt bva_prompt.js; jalankan prompt pada file itu dan outputkan pada output utama
 Buat secara sangat detail dan komprehensif (outputkan dengan format table)
 

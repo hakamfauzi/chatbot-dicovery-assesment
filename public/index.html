@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gemini Chatbot</title>
+    <title>Discovery Assesment</title>
     <link rel="stylesheet" href="style.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
@@ -84,6 +84,62 @@
         let qnaActive = false;
         let qnaStep = 1;
         let qnaCategory = '';
+
+        const bubbleEscape = (s) => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        const bubbleSanitize = (html) => {
+            let x = String(html || '');
+            x = x.replace(/<\s*script[\s\S]*?<\/\s*script\s*>/gi,'');
+            x = x.replace(/<\s*style[\s\S]*?<\/\s*style\s*>/gi,'');
+            x = x.replace(/\s+on[a-z]+\s*=\s*"[^"]*"/gi,'').replace(/\s+on[a-z]+\s*=\s*'[^']*'/gi,'').replace(/\s+on[a-z]+\s*=\s*[^\s>]+/gi,'');
+            x = x.replace(/\s+style\s*=\s*"[^"]*"/gi,'').replace(/\s+style\s*=\s*'[^']*'/gi,'').replace(/\s+style\s*=\s*[^\s>]+/gi,'');
+            // Sanitize anchors
+            x = x.replace(/<\s*a\b([^>]*)>/gi,(m,attrs)=>{const hrefMatch=String(attrs||'').match(/\bhref\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))/i);let href=hrefMatch?(hrefMatch[1]||hrefMatch[2]||hrefMatch[3]):'';if(!/^https?:\/\//i.test(String(href||''))) href='';const safeAttr=href?` href="${href}"`:'';return `<a${safeAttr}>`;});
+            x = x.replace(/<\s*\/\s*a\s*>/gi,'</a>');
+            const allowed=/^(?:p|br|hr|b|strong|i|em|code|pre|h1|h2|h3|h4|table|thead|tbody|tr|th|td|ul|ol|li|caption|a)$/;
+            x = x.replace(/<\s*(\/?)([a-z0-9]+)\b([^>]*)>/gi,(m,slash,name)=>{const nm=String(name||'').toLowerCase();return allowed.test(nm)?`<${slash}${nm}>`:m.replace(/</g,'&lt;').replace(/>/g,'&gt;');});
+            return x;
+        };
+        const renderBubbleText = (text) => {
+            const lines = String(text || '').split(/\r?\n/);
+            let out=[], inTable=false, tableRows=[], codeFence=false;
+            const isTableLine=(t)=>/^\s*\|.*\|\s*$/.test(String(t||''));
+            const isTableSep=(t)=>/^\s*\|(?:\s*:?-+:?\s*\|)+\s*$/.test(String(t||''));
+            const inline=(s)=>{
+                let t=String(s||'');
+                const codes=[]; t=t.replace(/`([^`]+?)`/g,(m,g)=>{codes.push(g); return `@@C${codes.length-1}@@`;});
+                t=t.replace(/\*\*\{\s*([^}]+)\s*\}\*\*/g,'<b>$1</b>');
+                t=t.replace(/\*\*(.+?)\*\*/g,'<b>$1</b>');
+                t=t.replace(/__([^_]+?)__/g,'<i>$1</i>');
+                t=t.replace(/\*([^*]+?)\*/g,'<i>$1</i>');
+                t=t.replace(/@@C(\d+)@@/g,(m,i)=>`<code>${bubbleEscape(codes[Number(i)])}</code>`);
+                return t;
+            };
+            const flushTable=()=>{
+                if (!tableRows.length){inTable=false;return;}
+                const header = tableRows.length>1 && isTableSep(String(tableRows[1]||'')) ? tableRows[0] : null;
+                const body = header ? tableRows.slice(2) : tableRows.slice(0);
+                const parseCells=(line)=>String(line||'').trim().replace(/^\|+|\|+$/g,'').split('|').map(c=>inline(String(c||'').trim()));
+                let html='<table>';
+                if (header){const ths=parseCells(header).map(c=>`<th>${c}</th>`).join(''); html+=`<thead><tr>${ths}</tr></thead>`;}
+                html+='<tbody>' + body.filter(r=>!isTableSep(r)).map(row=>{const tds=parseCells(row).map(c=>`<td>${c}</td>`).join(''); return `<tr>${tds}</tr>`;}).join('') + '</tbody></table>';
+                out.push(html); tableRows=[]; inTable=false;
+            };
+            const isRawHtmlLine=(t)=>/^\s*<\s*(p|br|hr|b|strong|i|em|code|pre|h[1-4]|table|thead|tbody|tr|th|td|ul|ol|li|caption|a)\b/i.test(String(t||'')) || /^\s*<\s*\/\s*(p|pre|code|table|thead|tbody|tr|ul|ol|li|a)\s*>/i.test(String(t||''));
+            for (let i=0;i<lines.length;i++){
+                const raw=lines[i]; const s=String(raw||''); const trim=s.trim();
+                if (/^```/.test(trim)){ codeFence=!codeFence; out.push(codeFence?'<pre><code>':'</code></pre>'); continue; }
+                if (codeFence){ out.push(bubbleEscape(s)); continue; }
+                if (isRawHtmlLine(s)) { out.push(bubbleSanitize(s)); continue; }
+                if (isTableLine(s)){ if (!inTable){ inTable=true; tableRows=[]; } tableRows.push(s); continue; }
+                if (inTable && !isTableLine(s)){ flushTable(); }
+                const h=trim.match(/^#{1,4}\s+(.*)$/);
+                if (h){ const lvl=(trim.match(/^#{1,4}/)[0].length); out.push(`<h${lvl}>${inline(h[1])}</h${lvl}>`); continue; }
+                if (/^\s*---\s*$/.test(trim)){ out.push('<hr/>'); continue; }
+                out.push(inline(s));
+            }
+            if (inTable) flushTable();
+            return bubbleSanitize(out.join('\n'));
+        };
 
         
         // Helper: fetch dengan timeout menggunakan AbortController
@@ -343,7 +399,7 @@
             row.className = `msg msg-${role}`;
             const bubble = document.createElement('div');
             bubble.className = 'bubble';
-            bubble.textContent = text;
+            bubble.innerHTML = renderBubbleText(text);
             row.appendChild(bubble);
             chatMessages.appendChild(row);
             chatMessages.scrollTop = chatMessages.scrollHeight;

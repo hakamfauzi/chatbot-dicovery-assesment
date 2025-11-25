@@ -134,6 +134,26 @@ test('generate: header "## Scenario Testing Use" terdeteksi sebagai scenario', a
   expect(parts[0]).not.toMatch(/Scenario Testing Use/);
 });
 
+test('generate: header "##Testing scenario" (tanpa spasi) terdeteksi sebagai scenario', async () => {
+  const { handler } = await importGenerate();
+  const rawText = [
+    '**Developer Guide**',
+    'Desain sistem...',
+    '##Testing scenario',
+    '| Aspek | Detail |',
+    '|---|---|',
+    '| Latency | respon ≤ 2 s |'
+  ].join('\n');
+  const res = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({ format: 'html', assessment: { use_case_name: 'Case Scenario NoSpace', domain: 'RPA', impact: 10, feasibility: 20, total: 30, priority: 'Quick', rawText } })
+  });
+  expect(res.statusCode).toBe(200);
+  const html = String(res.body || '');
+  expect(html).toMatch(/<div class="panel-header">Scenario Testing Usecase<\/div>/);
+  expect(html).toMatch(/<table/);
+});
+
 test('generate: panel Business Value Assessment menampilkan konten dari rawText', async () => {
   const { handler } = await importGenerate();
   const rawText = [
@@ -157,4 +177,36 @@ test('generate: panel Business Value Assessment menampilkan konten dari rawText'
   const parts = html.split('<div class="panel-header">Business Value Assessment</div>');
   expect(parts[0]).toMatch(/<div class="panel-header">Design Solution<\/div>/);
   expect(parts[0]).not.toMatch(/Business Value Assessment/);
+});
+test('generate: Design Solution mengambil devguide terfilter & tidak memuat scenario/BVA', async () => {
+  const { handler } = await importGenerate();
+  const rawText = [
+    '**Developer Guide**',
+    'Desain arsitektur modul utama dan integrasi.',
+    '- Komponen: API, Queue, Worker',
+    '## Scenario Testing Use',
+    '| Aspek | Detail |',
+    '|---|---|',
+    '| Latency | ≤ 2 s |',
+    '### Business Value Assessment (BVA)',
+    '| Metric | Baseline | Target | Benefit |',
+    '|---|---|---|---|',
+    '| Cycle time | 9 menit | 3 menit | besar |'
+  ].join('\n');
+  const res = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({ format: 'html', assessment: { use_case_name: 'Case Dev', domain: 'DocAI', impact: 10, feasibility: 20, total: 30, priority: 'Quick', rawText } })
+  });
+  expect(res.statusCode).toBe(200);
+  const html = String(res.body || '');
+  const dsPanelIdx = html.indexOf('<div class="panel-header">Design Solution</div>');
+  expect(dsPanelIdx).toBeGreaterThan(-1);
+  const scenarioIdx = html.indexOf('<div class="panel-header">Scenario Testing Usecase</div>');
+  const bvaIdx = html.indexOf('<div class="panel-header">Business Value Assessment</div>');
+  expect(scenarioIdx).toBeGreaterThan(-1);
+  expect(bvaIdx).toBeGreaterThan(-1);
+  const dsSection = html.slice(dsPanelIdx, scenarioIdx);
+  expect(dsSection).toMatch(/Komponen: API, Queue, Worker/);
+  expect(dsSection).not.toMatch(/Scenario Testing Use/);
+  expect(dsSection).not.toMatch(/Business Value Assessment/);
 });
