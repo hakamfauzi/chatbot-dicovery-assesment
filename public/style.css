@@ -267,7 +267,7 @@ button:not(:disabled):hover {
 .badge-priority-other { background: #ede7f6; color: #673ab7; border-color: #673ab7; }
 
 /* Actions column compact buttons */
-.data-table td.actions { white-space: nowrap; }
+.data-table td.actions { white-space: normal; }
 .data-table .btn-gen-pdf-row {
     display: inline-block;
     min-width: 60px;
@@ -312,17 +312,17 @@ button:not(:disabled):hover {
 .data-table thead th:nth-child(6) { width: 70px; text-align: center; }
 .data-table thead th:nth-child(7) { width: 100px; text-align: center; }
 .data-table thead th:nth-child(8) { width: 100px; text-align: center; }
-.data-table td.actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; align-items: center; }
+.data-table td.actions { display: flex; flex-direction: column; flex-wrap: nowrap; gap: 10px; justify-content: center; align-items: center; }
 
 @media (max-width: 992px) {
     .data-table thead th:nth-child(2) { width: 40%; }
     .data-table thead th:nth-child(3) { width: 40%; }
     .data-table thead th:nth-child(8) { width: 96px; }
 }
-.data-table thead th:nth-child(8) { width: 100px; text-align: right; }
+.data-table thead th:nth-child(8) { width: 100px; text-align: center; }
 .data-table tbody td:nth-child(7) { text-align: center; }
 .data-table tbody td:nth-child(7) .badge { margin: 0 auto; }
-.data-table td.actions { text-align: right; }
+.data-table td.actions { text-align: center; }
 /* Helper classes */
 .clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .wrap { word-break: break-word; }
