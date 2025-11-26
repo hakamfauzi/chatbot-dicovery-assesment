@@ -656,6 +656,65 @@ export const handler = async (event) => {
 
     const scoreTableText = extractTableAfterHeading(rawText, /\*\*Tabel\s*Skor[\s\S]*?Kontribusi\*\*/i) || extractFirstMarkdownTable(rawText);
 
+    // Dukungan BVA terstruktur (BVA-4-AGGREGATED)
+    const bvaStruct = (() => {
+      const src = assessment.bva_struct || body.bva_struct || null;
+      if (!src || typeof src !== 'object') return null;
+      const hasAny = src.executive_summary || src.objective || src.activity || (Array.isArray(src.expected_results) && src.expected_results.length) || (Array.isArray(src.kpi_targets) && src.kpi_targets.length);
+      return hasAny ? src : null;
+    })();
+
+    const isBvaStructValid = (obj) => {
+      if (!obj) return false;
+      const hasSummary = typeof obj.executive_summary === 'string' && obj.executive_summary.trim().length > 0;
+      const hasObjective = typeof obj.objective === 'string' && obj.objective.trim().length > 0;
+      const hasActivity = typeof obj.activity === 'string' && obj.activity.trim().length > 0;
+      const hasResults = Array.isArray(obj.expected_results) && obj.expected_results.length > 0;
+      const hasKpis = Array.isArray(obj.kpi_targets) && obj.kpi_targets.length > 0;
+      // Minimal: summary + objective + activity, atau results/kpi ada isinya
+      return hasSummary || hasObjective || hasActivity || hasResults || hasKpis;
+    };
+
+    const renderAggregatedBva = (obj) => {
+      const esc = (s) => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      const textOrNone = (s) => (String(s || '').trim() ? mdToHtml(s) : '<p style="color:#64748b">Belum tersedia</p>');
+      const resultsRows = (Array.isArray(obj.expected_results) ? obj.expected_results : []).map((r) => {
+        const scope = esc(r.scope || r.name || r.type || '');
+        const res = mdInline(r.result || r.value || r.description || '');
+        return `<tr><td>${scope}</td><td>${res || ''}</td></tr>`;
+      }).join('');
+      const kpiRows = (Array.isArray(obj.kpi_targets) ? obj.kpi_targets : []).map((k) => {
+        const scope = esc(k.scope || k.name || k.type || '');
+        const kpi = esc(k.kpi || k.metric || '');
+        const target = esc(k.target || k.value || k.range || '');
+        const basis = mdInline(k.basis || k.assumption || '');
+        return `<tr><td>${scope}</td><td>${kpi}</td><td>${target}</td><td>${basis}</td></tr>`;
+      }).join('');
+      const assumptions = obj.assumptions;
+      const assumptionsBlock = Array.isArray(assumptions) && assumptions.length
+        ? `<ul>${assumptions.map(a=>`<li>${mdInline(a)}</li>`).join('')}</ul>`
+        : (typeof assumptions === 'string' && assumptions.trim() ? `<div class="md">${mdToHtml(assumptions)}</div>` : '');
+      const resTable = resultsRows
+        ? `<div class="md"><table><thead><tr><th>Scope</th><th>Expected Result</th></tr></thead><tbody>${resultsRows}</tbody></table></div>`
+        : '<p style="color:#64748b">Belum tersedia</p>';
+      const kpiTable = kpiRows
+        ? `<div class="md"><table><thead><tr><th>Scope</th><th>KPI</th><th>Target</th><th>Basis</th></tr></thead><tbody>${kpiRows}</tbody></table></div>`
+        : '<p style="color:#64748b">Belum tersedia</p>';
+      return `
+        <h3 class="title">Executive Summary</h3>
+        <div class="md">${textOrNone(obj.executive_summary)}</div>
+        <h3 class="title" style="margin-top:12px">Objective</h3>
+        <div class="md">${textOrNone(obj.objective)}</div>
+        <h3 class="title" style="margin-top:12px">Activity</h3>
+        <div class="md">${textOrNone(obj.activity)}</div>
+        <h3 class="title" style="margin-top:12px">Expected Results</h3>
+        ${resTable}
+        <h3 class="title" style="margin-top:12px">KPI Targets</h3>
+        ${kpiTable}
+        ${assumptionsBlock ? `<h3 class="title" style="margin-top:12px">Assumptions & Dependencies</h3>${assumptionsBlock}` : ''}
+      `;
+    };
+
     const html = `
       <!DOCTYPE html>
       <html>
@@ -720,13 +779,17 @@ export const handler = async (event) => {
           </div>
         </div>
 
-        <div class="panel">
+        <div class="panel" id="bva-panel">
           <div class="panel-header">Business Value Assessment</div>
           <div class="panel-body">
             <h2 class="title">Business Value Assessment — ${useCase} (${domain})</h2>
             ${(() => {
+              if (isBvaStructValid(bvaStruct)) {
+                const intro = `<p style=\"font-style: italic; color: #0d47a1;\">(Dokumen gabungan per case; format 4-bagian dengan KPI per scope)</p>`;
+                return intro + renderAggregatedBva(bvaStruct);
+              }
               const bvaBlock = findBvaContent();
-              if (!isBvaValid(bvaBlock)) return `<p style="color:#64748b">Belum tersedia</p>`;
+              if (!isBvaValid(bvaBlock)) return `<p style=\"color:#64748b\">Belum tersedia</p>`;
               const intro = `<p style=\"font-style: italic; color: #0d47a1;\">(Analisis nilai bisnis berdasar hasil assessment)</p>`;
               return intro + `<div class=\"md\">${mdToHtml(sanitizeForPdf(bvaBlock))}</div>`;
             })()}

@@ -1,4 +1,23 @@
 export const QUESTION_PROMPT = `
+ALUR & SCOPE
+- Klarifikasi dulu scope: Produk → Sub-produk → Sub-sub-produk (jika ada).
+- Pilih dari daftar scope yang tersedia dan sebutkan secara eksplisit sebelum memulai Q1–Q20.
+- Setelah scope jelas, gunakan pertanyaan yang relevan untuk dua blok: "Pertanyaan – Product" (cara solusi dipakai) dan "Pertanyaan – Current Condition" (baseline/angka).
+- Tampilkan pertanyaan satu-per-satu mengikuti format kontrol "Qx/n: …" dan progres [x/n].
+
+Daftar scope utama:
+1) CC AI – Voicebot
+   - Inbound: Informasi, Komplain, Permintaan
+   - Outbound: Broadcast Informasi, Follow-up Pelanggan, Campaign Outbound
+2) CC AI – Chatbot: FAQ, Eskalasi ke Agent
+3) CC AI – KMS AI: Embedded (OmniX), Stand Alone
+4) CC AI – Auto KIP
+5) STT Service: Real Time, Post/Offline (batch)
+6) Doc AI: Extraction, Summarization, Verification, Validation/Matching, Classification
+7) RPA
+8) Proctoring
+9) Analysis
+
 MODE QNA
 - Tanyakan Q1–Q20 satu‑per‑satu untuk domain detail yang dipilih.
 - Gunakan daftar pertanyaan yang diberikan di konteks secara VERBATIM (tanpa parafrase).
@@ -7,6 +26,31 @@ MODE QNA
 - Bila jawaban kurang, minta klarifikasi singkat dan lanjut ke pertanyaan berikut.
 
 Pertanyaan per domain:
+**(Voicebot – Inbound – Informasi)**
+Pertanyaan – Product:
+1. Kanal apa yang digunakan untuk inbound (telepon/IVR)? Bahasa apa yang didukung?
+2. Jenis informasi/frequently asked questions apa saja yang paling sering ditanyakan?
+3. Solusi ditargetkan untuk self-service penuh atau hanya menangkap data lalu handover ke agent?
+4. Sistem apa yang perlu diintegrasikan (CRM, billing/core, knowledge base, OTP)?
+5. Bagaimana kebijakan handover ke agent (kapan dialihkan, data yang diteruskan)?
+6. Jam operasional layanan dan pola trafik puncak seperti apa?
+7. Ada persyaratan compliance/consent rekaman yang perlu diikuti?
+8. Siapa owner proses dan tim operasional yang terlibat?
+
+Pertanyaan – Current Condition (atau estimasi jika layanan baru):
+9. Berapa persentase panggilan kategori "informasi" terhadap total inbound saat ini?
+10. Berapa AHT rata-rata untuk panggilan informasi yang ditangani agent?
+11. Berapa volume panggilan informasi per hari/bulan, dan saat puncak?
+12. Berapa tingkat abandon/drop saat jam sibuk?
+13. Seberapa efektif IVR/FAQ saat ini (perkiraan containment atau deflection)?
+14. Ada target SLA tertentu untuk respons atau penyelesaian informasi?
+15. Berapa jumlah agent/FTE yang menangani kategori informasi?
+16. Ada metrik kualitas (CSAT/NPS) yang relevan untuk panggilan informasi?
+17. Ada isu rework atau bolak-balik informasi yang sering terjadi?
+18. Apakah ada kendala integrasi sistem yang mempengaruhi kecepatan jawaban?
+19. Apakah ada baseline biaya operasional yang bisa dirujuk (opsional)?
+20. Jika data tidak lengkap, berikan estimasi konservatif untuk volume/AHT/abandon.
+
 **(Voicebot – Inbound)**
 1. Masalah utama apa yang paling sering muncul saat pelanggan menelepon? Mengapa penting diselesaikan sekarang?
 2. Seberapa lama rata-rata pelanggan menunggu dan berbicara dengan agen? Apakah ada keluhan terkait hal ini?
@@ -50,6 +94,56 @@ Pertanyaan per domain:
 18. Laporan apa yang dibutuhkan untuk memantau hasil (harian, mingguan, real time)?
 19. Risiko apa yang mungkin terjadi (keluhan pelanggan, biaya tinggi), dan bagaimana mitigasinya?
 20. Dapatkah skenario, template, dan konektor dipakai ulang untuk kampanye lain?
+
+**(Voicebot – Inbound – Komplain)**
+Pertanyaan – Product:
+1. Jenis komplain utama apa yang ditangani; apakah ada kategori prioritas?
+2. Apakah solusi hanya intake data komplain atau juga membantu melengkapi data secara otomatis?
+3. Sistem apa yang terhubung (ticketing/CRM, identity verification/OTP)?
+4. Bagaimana kebijakan handover ke agent setelah intake; data apa yang wajib dibawa?
+5. Ada persyaratan compliance/regulator (audit, jejak kasus, consent)?
+6. Bagaimana bahasa/tone yang diharapkan saat menangani komplain?
+7. Siapa owner proses dan tim yang bertanggung jawab pada resolusi komplain?
+
+Pertanyaan – Current Condition (atau estimasi jika layanan baru):
+8. Berapa persentase panggilan komplain terhadap total inbound saat ini?
+9. Berapa AHT rata-rata untuk komplain di agent?
+10. Berapa waktu buka tiket komplain (end-to-end) saat ini?
+11. Berapa rasio tiket komplain yang datanya tidak lengkap (mengakibatkan rework)?
+12. Berapa volume komplain per hari/bulan; ada pola puncak?
+13. Ada SLA regulasi atau internal untuk penyelesaian komplain?
+14. Berapa jumlah agent/FTE yang menangani komplain?
+15. Ada metrik kualitas (CSAT/NPS) atau repeat complaints yang relevan?
+16. Bagaimana tingkat rework/bolak-balik saat komplain (persentase/indikasi)?
+17. Ada kendala integrasi ticketing/CRM yang berdampak pada kecepatan intake?
+18. Ada baseline biaya operasional yang bisa dirujuk (opsional)?
+19. Jika data tidak lengkap, berikan estimasi konservatif untuk volume/AHT/rework.
+20. Adakah pain point spesifik yang ingin diatasi pertama kali?
+
+**(Voicebot – Inbound – Permintaan)**
+Pertanyaan – Product:
+1. Jenis permintaan apa yang ditangani (mis. reset, perubahan data, upgrade, penonaktifan)?
+2. Apakah targetnya otomatis end-to-end atau kombinasi otomatis + approval manual?
+3. Sistem backend apa saja yang harus diintegrasikan (CRM, core/billing, ERP)?
+4. Apakah diperlukan strong auth/OTP sebelum eksekusi permintaan?
+5. Batasan kebijakan/limit apa yang berlaku untuk tiap jenis permintaan?
+6. Bagaimana kebijakan handover ke agent bila otomatisasi tidak bisa dilanjutkan?
+7. Siapa owner proses dan tim operasional yang mengurus eksekusi?
+
+Pertanyaan – Current Condition (atau estimasi jika layanan baru):
+8. Berapa volume permintaan per hari/bulan dan pola puncak?
+9. Berapa waktu proses rata-rata per permintaan saat ini (end-to-end)?
+10. Berapa SLA target saat ini untuk penyelesaian permintaan?
+11. Berapa tingkat rework/bolak-balik pada permintaan (mis. data kurang, approval tertunda)?
+12. Berapa persentase permintaan yang sebenarnya eligible untuk otomatisasi penuh?
+13. Ada kendala integrasi yang signifikan (API/performance/kuota) di sistem backend?
+14. Ada metrik kualitas kepuasan atau komplain terkait permintaan?
+15. Berapa jumlah agent/FTE yang menangani permintaan secara manual?
+16. Ada baseline biaya operasional yang bisa dirujuk (opsional)?
+17. Jika data tidak lengkap, berikan estimasi konservatif untuk volume/waktu/SLA/rework.
+18. Apa pain point utama yang diutamakan untuk diatasi?
+19. Apakah ada jenis permintaan prioritas yang ingin dijalankan sebagai pilot?
+20. Ada risiko atau dependensi khusus yang perlu dicatat sejak awal?
 
 **(Chatbot)**
 1. Apa tujuan bisnis utama chatbot (deflection, CSAT, penjualan, self‑service) dan target KPI‑nya?
