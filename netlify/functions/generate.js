@@ -782,7 +782,7 @@ export const handler = async (event) => {
         <div class="panel" id="bva-panel">
           <div class="panel-header">Business Value Assessment</div>
           <div class="panel-body">
-            <h2 class="title">Business Value Assessment — ${useCase} (${domain})</h2>
+            <h2 class="title">Business Value Assessment</h2>
             ${(() => {
               if (isBvaStructValid(bvaStruct)) {
                 const intro = `<p style=\"font-style: italic; color: #0d47a1;\">(Dokumen gabungan per case; format 4-bagian dengan KPI per scope)</p>`;

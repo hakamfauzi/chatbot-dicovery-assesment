@@ -125,7 +125,8 @@ export const handler = async (event) => {
     const wantsQna = flow === "qna" || !!(body.modules && body.modules.questions) || JSON.stringify(body.messages || "").toLowerCase().includes("/qna");
     const assessmentDone = body.assessmentComplete === true;
     const allText = JSON.stringify(body.messages || "").toLowerCase();
-    const triggerScore = assessmentDone || /\b\/score\b/.test(allText) || flow === "score";
+    const baseText = (Array.isArray(baseMessages) ? baseMessages.map(m => String(m?.content || "")).join(" ") : "").toLowerCase();
+    const triggerScore = (!wantsQna) && (assessmentDone || baseText.includes("/score") || flow === "score");
     const preludeTexts = [];
     if (MAIN_PROMPT) preludeTexts.push(MAIN_PROMPT);
     if (wantsQna && QUESTION_PROMPT) preludeTexts.push(QUESTION_PROMPT);

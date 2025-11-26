@@ -68,6 +68,9 @@ test('score_groq: sekali /score menyisipkan directive Scenario dan BVA', async (
   expect(Array.isArray(capturedMessages)).toBe(true);
   expect(capturedMessages.length).toBeGreaterThan(1);
   const contents = capturedMessages.map(m => String(m?.content || ''));
+  // Debug print to help verify directive presence during test
+  // eslint-disable-next-line no-console
+  console.log('Captured messages sample:', contents.slice(0,3));
   const hasScenarioDir = contents.some(c => /Tambahkan bagian '###\s*Testing\s*Scenario'/i.test(c));
   const hasBvaDir = contents.some(c => /Tambahkan bagian '###\s*Business\s*Value\s*Assessment/i.test(c));
   expect(hasScenarioDir).toBe(true);

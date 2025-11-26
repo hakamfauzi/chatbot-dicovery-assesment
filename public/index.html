@@ -764,6 +764,15 @@
                             <td><span class="badge ${badgeClass}">${priLabel}</span></td>
                             <td class="actions">
                               <button class="btn-gen-pdf-row" data-idx="${i}">PDF</button>
+                              <button class="btn-del-row" title="Hapus" aria-label="Hapus" data-idx="${i}">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                  <path d="M3 6h18" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+                                  <path d="M8 6V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v1" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+                                  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+                                  <path d="M10 11v6" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+                                  <path d="M14 11v6" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+                                </svg>
+                              </button>
                             </td>
                         `;
                         tbody.appendChild(tr);
@@ -787,6 +796,35 @@
                             await generateAssessment(a, false);
                         });
                     });
+                    const btnsDel = tbody.querySelectorAll('.btn-del-row');
+                    btnsDel.forEach((btn) => {
+                        btn.addEventListener('click', async () => {
+                            const idx = parseInt(btn.getAttribute('data-idx'), 10);
+                            const x = rows[idx];
+                            const msg = `Hapus baris: ${x.use_case_name || ''} — ${x.timestamp || ''}?`;
+                            if (!window.confirm(msg)) return;
+                            try {
+                                const resp = await fetchWithTimeout('/.netlify/functions/delete', {
+                                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ timestamp: x.timestamp, use_case_name: x.use_case_name })
+                                }, 60000);
+                                const json = await resp.json().catch(() => ({}));
+                                if (!resp.ok) {
+                                    const m = json.error || json.message || 'Gagal menghapus.';
+                                    throw new Error(m);
+                                }
+                                // Hapus dari UI secara optimistik
+                                rows.splice(idx, 1);
+                                sheetItems.splice(idx, 1);
+                                renderSheetList(rows);
+                                showUndoToast(x);
+                                // Segarkan grafik dengan data dari Sheets
+                                loadSheetButton.click();
+                            } catch (err) {
+                                alert(`Gagal menghapus: ${err.message}`);
+                            }
+                        });
+                    });
                     
                 };
                 renderSheetList(sheetItems);
@@ -794,6 +832,64 @@
                 saveStatus.textContent = `Gagal: ${err.message}`;
             }
         });
+
+        const showUndoToast = (row) => {
+            const id = 'undo-toast';
+            let toast = document.getElementById(id);
+            if (!toast) {
+                toast = document.createElement('div');
+                toast.id = id;
+                toast.style.position = 'fixed';
+                toast.style.bottom = '20px';
+                toast.style.right = '20px';
+                toast.style.background = '#263238';
+                toast.style.color = '#fff';
+                toast.style.padding = '12px 16px';
+                toast.style.borderRadius = '8px';
+                toast.style.boxShadow = '0 2px 10px rgba(0,0,0,0.2)';
+                toast.style.zIndex = '9999';
+                toast.style.display = 'flex';
+                toast.style.gap = '10px';
+                toast.style.alignItems = 'center';
+                document.body.appendChild(toast);
+            }
+            toast.innerHTML = `Baris terhapus. <button id="btn-undo-del" style="background:#ffca28;color:#000;border:none;border-radius:6px;padding:6px 10px;cursor:pointer;">Undo</button>`;
+            let alive = true;
+            const timer = setTimeout(() => { alive = false; toast.remove(); }, 5000);
+            const btnUndo = document.getElementById('btn-undo-del');
+            btnUndo.onclick = async () => {
+                if (!alive) return; alive = false; clearTimeout(timer);
+                toast.remove();
+                try {
+                    const assessment = {
+                        timestamp: row.timestamp || '',
+                        use_case_name: row.use_case_name || '',
+                        domain: row.domain || '',
+                        impact: Number(row.impact) || 0,
+                        feasibility: Number(row.feasibility) || 0,
+                        total: Number(row.total) || 0,
+                        priority: getPriorityByScore(row.total),
+                        rawText: row.rawText || '',
+                        project_overview: row.project_overview || '',
+                        rekomendasi_jalur: row.rekomendasi_jalur || '',
+                        alasan: row.alasan || '',
+                        risk: row.risk || '',
+                        next_step: row.next_step || '',
+                        devguide_text: row.devguideText || ''
+                    };
+                    const resp = await fetchWithTimeout('/.netlify/functions/save', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ assessment })
+                    }, 60000);
+                    const json = await resp.json().catch(() => ({}));
+                    if (!resp.ok) throw new Error(json.error || json.message || 'Gagal undo.');
+                    alert('Baris berhasil di-undo.');
+                    loadSheetButton.click();
+                } catch (err) {
+                    alert(`Gagal undo: ${err.message}`);
+                }
+            };
+        };
 
         // Inisialisasi grafik saat halaman siap
         const loadQuestions = async () => {
