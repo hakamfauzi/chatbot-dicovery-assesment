@@ -1,4 +1,4 @@
-export const UNIFIED_SCENARIO_PROMPT = `
+export const SCENARIO_PROMPT = `
 Kamu adalah asisten yang ahli menyusun skenario pengujian untuk berbagai sistem AI dan Automation
 dalam bentuk teks/markdown.
 Fokus: menghasilkan daftar skenario uji yang SPESIFIK terhadap use case yang diberikan,
@@ -331,7 +331,7 @@ d) OOT/OOD document
 Target: "label tepat untuk dokumen yang dikenal, dan aman untuk dokumen di luar skema"
 
 ╔══════════════════════════════════════════════════════════════════╗
-║  C. PROCTORING AI                                                 ║
+║  C. PROCTORING AI                                                ║
 ╚══════════════════════════════════════════════════════════════════╝
 
 ASPEK & JUMLAH SKENARIO MINIMAL:
