@@ -22,12 +22,13 @@ export const handler = async (event) => {
     }
 
     const clientEmail = (process.env.GOOGLE_CLIENT_EMAIL || process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || "").trim();
-    const privateKeyRaw = (process.env.GOOGLE_PRIVATE_KEY || process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY || process.env.GOOGLE_PRIVATE_KEY_BASE64 || "").trim();
+    const privateKeyBase64 = String(process.env.GOOGLE_PRIVATE_KEY_BASE64 || "").trim();
+    const privateKeyRawFallback = (process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY || process.env.GOOGLE_PRIVATE_KEY || "").trim();
     const spreadsheetId = (process.env.GOOGLE_SHEETS_SPREADSHEET_ID || "").trim();
     const rangeEnv = (process.env.GOOGLE_SHEETS_RANGE || "hasil_llm!A:N").trim();
     const sheetTitle = String(rangeEnv.split("!")[0] || "hasil_llm").trim();
 
-    if (!clientEmail || !privateKeyRaw || !spreadsheetId) {
+    if (!clientEmail || (!privateKeyBase64 && !privateKeyRawFallback) || !spreadsheetId) {
       return {
         statusCode: 400,
         headers: { "Content-Type": "application/json" },
@@ -37,11 +38,11 @@ export const handler = async (event) => {
       };
     }
 
-    let pk = privateKeyRaw;
-    const looksBase64 = /^[A-Za-z0-9+/=]+$/.test(pk) && pk.length > 100 && pk.includes("=");
-    if (looksBase64) { try { pk = Buffer.from(pk, "base64").toString("utf8"); } catch {} }
+    let pk = privateKeyBase64 ? (() => { try { return Buffer.from(privateKeyBase64, "base64").toString("utf8"); } catch { return privateKeyRawFallback; } })() : privateKeyRawFallback;
     if (pk.startsWith('"') && pk.endsWith('"')) { pk = pk.slice(1, -1); }
-    const privateKey = pk.replace(/\\n/g, "\n").replace(/\r/g, "");
+    pk = pk.replace(/\\n/g, "\n").replace(/\r/g, "");
+    const hasHeader = /BEGIN\s+PRIVATE\s+KEY/.test(pk);
+    const privateKey = hasHeader ? pk : `-----BEGIN PRIVATE KEY-----\n${pk}\n-----END PRIVATE KEY-----\n`;
 
     const auth = new google.auth.JWT({
       email: clientEmail,
@@ -103,4 +104,3 @@ export const handler = async (event) => {
     };
   }
 };
-
