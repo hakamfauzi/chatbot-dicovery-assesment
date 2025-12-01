@@ -821,7 +821,13 @@ export const handler = async (event) => {
       headless: true
     });
     const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: "networkidle0" });
+    const htmlOverride = String(body.html || "").trim();
+    const urlDirect = String(body.url || "").trim();
+    if (urlDirect) {
+      await page.goto(urlDirect, { waitUntil: "networkidle0" });
+    } else {
+      await page.setContent(htmlOverride || html, { waitUntil: "networkidle0" });
+    }
     const pdf = await page.pdf({ format: "A4", printBackground: true, margin: { top: "20mm", bottom: "15mm", left: "15mm", right: "15mm" }, displayHeaderFooter: true, headerTemplate: "<span></span>", footerTemplate: "<div style=\"font-size:10px; width:100%; text-align:center;\"><span class=\"pageNumber\"></span> / <span class=\"totalPages\"></span></div>" });
     await browser.close();
 
