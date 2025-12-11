@@ -1,6 +1,7 @@
 import chromium from "@sparticuz/chromium";
 import puppeteer from "puppeteer-core";
- 
+import fs from "fs";
+
 
 export const handler = async (event) => {
   try {
@@ -152,16 +153,16 @@ export const handler = async (event) => {
         const m = t.match(re);
         if (m && m[1]) return stripMd(m[1]).trim();
       }
-      const kv = findKvFlexible(["owner project","project owner","owner","pemilik proyek"]);
+      const kv = findKvFlexible(["owner project", "project owner", "owner", "pemilik proyek"]);
       return kv;
     };
 
     let reasons = parseList(rawText, /\*\*Alasan utama[^\n]*\*\*/i);
-    if (!reasons.length) reasons = parseListFlexible(rawText, ["alasan utama","alasan"]);
+    if (!reasons.length) reasons = parseListFlexible(rawText, ["alasan utama", "alasan"]);
     let risksBlock = parseList(rawText, /\*\*Top risks[^\n]*\*\*/i);
-    if (!risksBlock.length) risksBlock = parseListFlexible(rawText, ["top risks","risiko utama","risiko"]);
+    if (!risksBlock.length) risksBlock = parseListFlexible(rawText, ["top risks", "risiko utama", "risiko"]);
     let nextSteps = parseList(rawText, /\*\*Next steps[^\n]*\*\*/i);
-    if (!nextSteps.length) nextSteps = parseListFlexible(rawText, ["next steps","langkah selanjutnya","next step","aksi lanjutan"]);
+    if (!nextSteps.length) nextSteps = parseListFlexible(rawText, ["next steps", "langkah selanjutnya", "next step", "aksi lanjutan"]);
 
     const extractQna = (conv) => {
       const out = [];
@@ -253,11 +254,11 @@ export const handler = async (event) => {
       return `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">${bars}${axis}${legend}</svg>`;
     })();
 
-    const months = ["March","April","May","June","July"];
-    const deliverables = ["Technical Interpretation","Engineering Report","Resource Availability Report","Server Replacement"];
+    const months = ["March", "April", "May", "June", "July"];
+    const deliverables = ["Technical Interpretation", "Engineering Report", "Resource Availability Report", "Server Replacement"];
     const timelineHtml = (() => {
-      const head = `<tr><th>Project Deliverable</th>${months.map(m=>`<th>${m}</th>`).join("")}</tr>`;
-      const rows = deliverables.map(d => `<tr><td>${d}</td>${months.map(()=>`<td>○</td>`).join("")}</tr>`).join("");
+      const head = `<tr><th>Project Deliverable</th>${months.map(m => `<th>${m}</th>`).join("")}</tr>`;
+      const rows = deliverables.map(d => `<tr><td>${d}</td>${months.map(() => `<td>○</td>`).join("")}</tr>`).join("");
       return `<table class="table tight">${head}${rows}</table>`;
     })();
 
@@ -651,7 +652,7 @@ export const handler = async (event) => {
       }
     };
 
-    const projectOverviewText = findVal("Project\\s*overview") || findKvFlexible(["project overview","ringkasan proyek"]);
+    const projectOverviewText = findVal("Project\\s*overview") || findKvFlexible(["project overview", "ringkasan proyek"]);
     const projectOwnerText = findOwner() || String(profile.owner || "");
 
     const scoreTableText = extractTableAfterHeading(rawText, /\*\*Tabel\s*Skor[\s\S]*?Kontribusi\*\*/i) || extractFirstMarkdownTable(rawText);
@@ -676,7 +677,7 @@ export const handler = async (event) => {
     };
 
     const renderAggregatedBva = (obj) => {
-      const esc = (s) => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      const esc = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
       const textOrNone = (s) => (String(s || '').trim() ? mdToHtml(s) : '<p style="color:#64748b">Belum tersedia</p>');
       const resultsRows = (Array.isArray(obj.expected_results) ? obj.expected_results : []).map((r) => {
         const scope = esc(r.scope || r.name || r.type || '');
@@ -692,7 +693,7 @@ export const handler = async (event) => {
       }).join('');
       const assumptions = obj.assumptions;
       const assumptionsBlock = Array.isArray(assumptions) && assumptions.length
-        ? `<ul>${assumptions.map(a=>`<li>${mdInline(a)}</li>`).join('')}</ul>`
+        ? `<ul>${assumptions.map(a => `<li>${mdInline(a)}</li>`).join('')}</ul>`
         : (typeof assumptions === 'string' && assumptions.trim() ? `<div class="md">${mdToHtml(assumptions)}</div>` : '');
       const resTable = resultsRows
         ? `<div class="md"><table><thead><tr><th>Scope</th><th>Expected Result</th></tr></thead><tbody>${resultsRows}</tbody></table></div>`
@@ -737,11 +738,11 @@ export const handler = async (event) => {
             ${projectOverviewText ? `<div class="kv"><div class="key">Project Overview</div><div>${mdInline(projectOverviewText)}</div></div>` : ''}
             ${projectOwnerText ? `<div class="kv"><div class="key">Project Owner</div><div>${mdInline(projectOwnerText)}</div></div>` : ''}
             <h3 class="title" style="margin-top:12px">Alasan utama</h3>
-            <ul>${reasons.map(x=>`<li>${mdInline(x)}</li>`).join("") || "<li>Tidak disebut</li>"}</ul>
+            <ul>${reasons.map(x => `<li>${mdInline(x)}</li>`).join("") || "<li>Tidak disebut</li>"}</ul>
             <h3 class="title" style="margin-top:12px">Top risks</h3>
-            <ul>${risksBlock.map(x=>`<li>${mdInline(x)}</li>`).join("") || "<li>Tidak disebut</li>"}</ul>
+            <ul>${risksBlock.map(x => `<li>${mdInline(x)}</li>`).join("") || "<li>Tidak disebut</li>"}</ul>
             <h3 class="title" style="margin-top:12px">Next steps</h3>
-            <ul>${nextSteps.map(x=>`<li>${mdInline(x)}</li>`).join("") || "<li>Tidak disebut</li>"}</ul>
+            <ul>${nextSteps.map(x => `<li>${mdInline(x)}</li>`).join("") || "<li>Tidak disebut</li>"}</ul>
             ${scoreTableText ? `<h3 class="title" style="margin-top:12px">Tabel Skor & Kontribusi</h3><div class="md">${mdToHtml(scoreTableText)}</div>` : ''}
           </div>
         </div>
@@ -759,10 +760,10 @@ export const handler = async (event) => {
           <div class="panel-body">
             <h2 class="title">Design Solution</h2>
             ${(() => {
-              const ds = findDevguideContent();
-              if (!isDevguideValid(ds)) return `<p style=\"color:#64748b\">Belum tersedia</p>`;
-              return `<div class=\"md\">${mdToHtml(sanitizeForPdf(ds))}</div>`;
-            })()}
+        const ds = findDevguideContent();
+        if (!isDevguideValid(ds)) return `<p style=\"color:#64748b\">Belum tersedia</p>`;
+        return `<div class=\"md\">${mdToHtml(sanitizeForPdf(ds))}</div>`;
+      })()}
           </div>
         </div>
 
@@ -771,11 +772,11 @@ export const handler = async (event) => {
           <div class="panel-body">
             <h2 class="title">Usecase Testing Scenario</h2>
             ${(() => {
-              const scenarioBlock = findScenarioContent();
-              if (!isScenarioValid(scenarioBlock)) return `<p style="color:#64748b">Belum tersedia</p>`;
-              const intro = `<p style="font-style: italic; color: #0d47a1;">(Berikut skenario uji yang dapat dijalankan pada fase pilot)</p>`;
-              return intro + `<div class="md">${mdToHtml(sanitizeForPdf(scenarioBlock))}</div>`;
-            })()}
+        const scenarioBlock = findScenarioContent();
+        if (!isScenarioValid(scenarioBlock)) return `<p style="color:#64748b">Belum tersedia</p>`;
+        const intro = `<p style="font-style: italic; color: #0d47a1;">(Berikut skenario uji yang dapat dijalankan pada fase pilot)</p>`;
+        return intro + `<div class="md">${mdToHtml(sanitizeForPdf(scenarioBlock))}</div>`;
+      })()}
           </div>
         </div>
 
@@ -784,15 +785,15 @@ export const handler = async (event) => {
           <div class="panel-body">
             <h2 class="title">Business Value Assessment</h2>
             ${(() => {
-              if (isBvaStructValid(bvaStruct)) {
-                const intro = `<p style=\"font-style: italic; color: #0d47a1;\">(Dokumen gabungan per case; format 4-bagian dengan KPI per scope)</p>`;
-                return intro + renderAggregatedBva(bvaStruct);
-              }
-              const bvaBlock = findBvaContent();
-              if (!isBvaValid(bvaBlock)) return `<p style=\"color:#64748b\">Belum tersedia</p>`;
-              const intro = `<p style=\"font-style: italic; color: #0d47a1;\">(Analisis nilai bisnis berdasar hasil assessment)</p>`;
-              return intro + `<div class=\"md\">${mdToHtml(sanitizeForPdf(bvaBlock))}</div>`;
-            })()}
+        if (isBvaStructValid(bvaStruct)) {
+          const intro = `<p style=\"font-style: italic; color: #0d47a1;\">(Dokumen gabungan per case; format 4-bagian dengan KPI per scope)</p>`;
+          return intro + renderAggregatedBva(bvaStruct);
+        }
+        const bvaBlock = findBvaContent();
+        if (!isBvaValid(bvaBlock)) return `<p style=\"color:#64748b\">Belum tersedia</p>`;
+        const intro = `<p style=\"font-style: italic; color: #0d47a1;\">(Analisis nilai bisnis berdasar hasil assessment)</p>`;
+        return intro + `<div class=\"md\">${mdToHtml(sanitizeForPdf(bvaBlock))}</div>`;
+      })()}
           </div>
         </div>
 
@@ -808,12 +809,28 @@ export const handler = async (event) => {
       };
     }
 
-    
 
-    let execPath;
-    try { execPath = await chromium.executablePath(); } catch (_) {
-      execPath = process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROME_PATH || "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
+
+    const isWin = process.platform === "win32";
+    let execPath = "";
+    try { execPath = await chromium.executablePath(); } catch (_) { execPath = ""; }
+    if (execPath && !fs.existsSync(execPath)) execPath = "";
+
+    // Fallback logic: Try env vars if chromium.executablePath() failed or file missing
+    if (!execPath) {
+      // Prioritize explicit env vars, then default win path only if on win
+      let p = String(process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROME_PATH || "").trim();
+      if (!p && isWin) {
+        p = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
+      }
+
+      if (p) {
+        if ((p.startsWith('"') && p.endsWith('"')) || (p.startsWith("'") && p.endsWith("'"))) p = p.slice(1, -1);
+        if (fs.existsSync(p)) execPath = p;
+      }
     }
+
+    if (!execPath) throw new Error("Chromium executable not found. Please set CHROME_PATH or ensure chromium is installed.");
     const browser = await puppeteer.launch({
       args: chromium.args,
       defaultViewport: chromium.defaultViewport,
@@ -831,7 +848,7 @@ export const handler = async (event) => {
     const pdf = await page.pdf({ format: "A4", printBackground: true, margin: { top: "20mm", bottom: "15mm", left: "15mm", right: "15mm" }, displayHeaderFooter: true, headerTemplate: "<span></span>", footerTemplate: "<div style=\"font-size:10px; width:100%; text-align:center;\"><span class=\"pageNumber\"></span> / <span class=\"totalPages\"></span></div>" });
     await browser.close();
 
-    const filename = `Usecase_${useCase.replace(/[^a-z0-9]+/gi,'_')}.pdf`;
+    const filename = `Usecase_${useCase.replace(/[^a-z0-9]+/gi, '_')}.pdf`;
     return {
       statusCode: 200,
       isBase64Encoded: true,

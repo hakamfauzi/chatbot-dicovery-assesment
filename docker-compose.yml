@@ -1,0 +1,15 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8888:8888"
+      - "3000:3000"
+    env_file:
+      - .env
+    volumes:
+      - ./:/app
+      - /app/node_modules
+    environment:
+      - NETLIFY_AUTH_TOKEN
+      - NETLIFY_SITE_ID
+    command: netlify dev --offline --port 8888 --target-port 3000
